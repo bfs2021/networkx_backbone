@@ -8,8 +8,9 @@ consolidates the design notes in ``docs/design/`` (the
 <https://github.com/brianckeegan/networkx_backbone/blob/main/docs/design/backbone-3.0-coverage.md>`_
 and the `hypergraph backboning proposal
 <https://github.com/brianckeegan/networkx_backbone/blob/main/docs/design/hypergraph-backboning.md>`_).
-Contributions to any item are welcome. Please open an issue first for the
-larger ones.
+Each open item links to its GitHub issue; `#31 <https://github.com/brianckeegan/networkx_backbone/issues/31>`_ tracks them all.
+Contributions are welcome. Please comment on an issue before starting one
+of the larger items.
 
 Status key: **done**, **next** (planned for the next release), **planned**,
 **idea** (open for discussion).
@@ -45,8 +46,13 @@ breaking changes:
   betweenness.
 - ``disparity_filter`` on directed graphs: now also tests the target's
   incoming links (Serrano et al., 2009).
-- The FDSM null now preserves degrees (a curveball chain), and the BiCM is
-  fitted exactly. See the changelog for the full bipartite and structural
+- Bipartite: the FDSM null now preserves degrees (a curveball chain with
+  burn-in, and p-values of ``(count + 1) / (trials + 1)``). The BiCM is fitted
+  exactly, with exact or RNA Poisson-binomial tails. SDSM-EC refits on the
+  free cells. ``fixedfill`` and ``fixedcol`` use their exact null
+  distributions. ``backbone_from_projection`` thresholds every method at
+  ``alpha``.
+- See the :doc:`changelog` for the full bipartite, hypergraph, and structural
   lists.
 - Shared conventions: every scorer rejects multigraphs, rejects NaN or
   infinite weights, works with node labels of mixed types, and preserves
@@ -60,45 +66,43 @@ Next release (0.2.0)
 Correctness gaps found in review and not yet fixed
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **next**: ``noise_corrected_filter`` is a binomial z-score. Implement the
+- **next** (`#9 <https://github.com/brianckeegan/networkx_backbone/issues/9>`_): ``noise_corrected_filter`` is a binomial z-score. Implement the
   full Bayesian noise-corrected backbone of Coscia & Neffke (2017): the
   posterior variance from the beta prior plus the delta method, and the
   transformed lift score. Keep the current score as an option for backward
   compatibility.
-- **next**: ``multiple_linkage_analysis`` currently thresholds LANS p-values
+- **next** (`#10 <https://github.com/brianckeegan/networkx_backbone/issues/10>`_): ``multiple_linkage_analysis`` currently thresholds LANS p-values
   (the netbone convention). Implement the dominance-fitting procedure of
   Van Nuffel et al. (2010) and keep the netbone behavior behind an option.
-- **next**: Directed ``lans_filter`` only uses the source's out-links. Also
+- **next** (`#11 <https://github.com/brianckeegan/networkx_backbone/issues/11>`_): Directed ``lans_filter`` only uses the source's out-links. Also
   test the target's in-links, as ``disparity_filter`` now does.
-- **next**: A directed GLAB variant, using the out- and in-involvement of
+- **planned** (`#12 <https://github.com/brianckeegan/networkx_backbone/issues/12>`_): A directed GLAB variant, using the out- and in-involvement of
   Zhang et al. (2014), Section 2.3.
-- **next**: ``fixedfill``: replace the ``Binomial(n, fill²)`` approximation
-  with the exact fixed-fill null distribution of Neal et al. (2021).
-- **next**: Check ``hyper_projection``'s weighting (:math:`1/d(z)` versus
+- **next** (`#13 <https://github.com/brianckeegan/networkx_backbone/issues/13>`_): Check ``hyper_projection``'s weighting (:math:`1/d(z)` versus
   Newman's :math:`1/(d(z)-1)`) and the arXiv identifier cited for the
   projection methods against Coscia & Neffke (2017).
 
 Validation
 ~~~~~~~~~~
 
-- **next**: Cross-implementation reference tests. Pin p-values on shared
+- **next** (`#14 <https://github.com/brianckeegan/networkx_backbone/issues/14>`_): Cross-implementation reference tests. Pin p-values on shared
   datasets (Les Misérables, Davis Southern Women, karate) against R
   ``backbone`` 3.0 and ``netbone``, stored as small JSON fixtures so the test
   suite needs neither R nor netbone.
-- **next**: An optional CI job that installs xgi, HyperNetX, HypergraphX, and
+- **next** (`#15 <https://github.com/brianckeegan/networkx_backbone/issues/15>`_): An optional CI job that installs xgi, HyperNetX, HypergraphX, and
   HAT and runs the adapter round-trip tests against the real libraries; they
   currently run only against stubs.
-- **planned**: Turn on numpydoc validation (``numpydoc_validation_checks``)
+- **planned** (`#17 <https://github.com/brianckeegan/networkx_backbone/issues/17>`_): Turn on numpydoc validation (``numpydoc_validation_checks``)
   in the docs build so missing Parameters, Returns, or Examples sections fail
   CI.
 
 Release engineering
 ~~~~~~~~~~~~~~~~~~~
 
-- **next**: Tag ``v0.2.0``. The repository has no version tags yet, so
+- **next** (`#16 <https://github.com/brianckeegan/networkx_backbone/issues/16>`_): Tag ``v0.2.0``. The repository has no version tags yet, so
   ``setuptools-scm`` falls back to ``0.0.0``. Publish to PyPI and conda-forge
   from the existing workflows.
-- **planned**: Add ``py.typed`` and type annotations for the public API.
+- **planned** (`#18 <https://github.com/brianckeegan/networkx_backbone/issues/18>`_): Add ``py.typed`` and type annotations for the public API.
 
 Planned features
 ----------------
@@ -106,39 +110,39 @@ Planned features
 API and ecosystem compatibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-- **planned**: NetworkX backend dispatching (``@nx._dispatchable``) so
+- **planned** (`#19 <https://github.com/brianckeegan/networkx_backbone/issues/19>`_): NetworkX backend dispatching (``@nx._dispatchable``) so
   backends such as ``nx-cugraph`` and ``nx-parallel`` can accelerate the
   shortest-path-heavy methods (salience, metric backbone, GLAB).
-- **planned**: Accept SciPy sparse arrays and pandas edge lists as input to the
+- **planned** (`#20 <https://github.com/brianckeegan/networkx_backbone/issues/20>`_): Accept SciPy sparse arrays and pandas edge lists as input to the
   statistical scorers, with ``to_*`` helpers back to NetworkX, matching how
   NetworkX interoperates with the NumPy/SciPy/pandas stack.
-- **planned**: Make the bipartite and projection code fully sparse (no dense
-  agent-by-artifact matrices) and vectorize the remaining per-pair loops.
-- **planned**: A sparse or blockwise ECM solver for graphs with more than
+- **planned** (`#30 <https://github.com/brianckeegan/networkx_backbone/issues/30>`_): Make the bipartite and projection code fully sparse
+  (no dense agent-by-artifact matrices). The per-pair loops are already
+  vectorized.
+- **planned** (`#21 <https://github.com/brianckeegan/networkx_backbone/issues/21>`_): A sparse or blockwise ECM solver for graphs with more than
   about 2,000 nodes, where the dense Newton polish is skipped.
-- **idea**: An ``asv`` benchmark suite, so performance regressions show up in
+- **planned** (`#22 <https://github.com/brianckeegan/networkx_backbone/issues/22>`_): An ``asv`` benchmark suite, so performance regressions show up in
   review.
 
 Methods
 ~~~~~~~
 
-- **planned**: ``describe_backbone`` (Backbone 3.0's ``narrative``): methods
+- **planned** (`#23 <https://github.com/brianckeegan/networkx_backbone/issues/23>`_): ``describe_backbone`` (Backbone 3.0's ``narrative``): methods
   text and citations for a chosen backbone and its parameters.
-- **planned**: The local (per-node-neighborhood) MDL hypergraph backbone
+- **planned** (`#24 <https://github.com/brianckeegan/networkx_backbone/issues/24>`_): The local (per-node-neighborhood) MDL hypergraph backbone
   (Kirkley et al., 2026, Appendix E).
-- **planned**: Signed variants of ``ecm_filter`` and the noise-corrected
+- **planned** (`#25 <https://github.com/brianckeegan/networkx_backbone/issues/25>`_): Signed variants of ``ecm_filter`` and the noise-corrected
   filter, for parity with the other scorers' ``signed=True``.
-- **idea**: A ``missing_as_zero`` toggle for weighted inputs (Backbone 3.0),
+- **idea** (`#26 <https://github.com/brianckeegan/networkx_backbone/issues/26>`_): A ``missing_as_zero`` toggle for weighted inputs (Backbone 3.0),
   for testing absent dyads.
-- **idea**: Further methods from the Yassin et al. (2025) structural and
-  statistical comparisons that are not covered yet. Candidates are tracked
-  in GitHub issues.
+- **idea** (`#29 <https://github.com/brianckeegan/networkx_backbone/issues/29>`_): Further methods from the Yassin et al. (2025)
+  structural and statistical comparisons that are not covered yet.
 
 Documentation
 ~~~~~~~~~~~~~
 
-- **planned**: A "validating a backbone" tutorial showing the
+- **planned** (`#27 <https://github.com/brianckeegan/networkx_backbone/issues/27>`_): A "validating a backbone" tutorial showing the
   ``compare_backbones``, ``consensus_backbone``, and ``mtc`` workflow end to
   end.
-- **planned**: Turn the Les Misérables benchmark table into an executed
+- **planned** (`#28 <https://github.com/brianckeegan/networkx_backbone/issues/28>`_): Turn the Les Misérables benchmark table into an executed
   Sphinx-Gallery example, so its edge counts cannot go stale.
