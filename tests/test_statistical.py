@@ -110,6 +110,24 @@ class TestLANSFilter:
         H = lans_filter(weighted_triangle)
         assert H.number_of_edges() == weighted_triangle.number_of_edges()
 
+    def test_directed_heavy_edge_significant_from_target_side(self):
+        # Five sources each send one link to ``v``; the heavy edge is the
+        # strongest incoming link of ``v`` and must get p = 0 from v's side.
+        G = nx.DiGraph()
+        for i, w in enumerate([100, 1, 1, 1, 1]):
+            G.add_edge(f"s{i}", "v", weight=w)
+        H = lans_filter(G)
+        assert H["s0"]["v"]["lans_pvalue"] == 0.0
+
+    def test_directed_uses_target_in_edges_not_only_source_out_edges(self):
+        # Edge (u, v1) is mid-ranked among u's out-edges (source-side eCDF = 0.5,
+        # so a source-only implementation answers p = 0.5) but is the strongest
+        # incoming link of v1, which must drive the p-value to 0.
+        G = nx.DiGraph()
+        G.add_weighted_edges_from([("u", "v1", 100), ("u", "w1", 200), ("x", "v1", 1)])
+        H = lans_filter(G)
+        assert H["u"]["v1"]["lans_pvalue"] == 0.0
+
 
 class TestMultipleLinkageAnalysis:
     def test_returns_scored_graph_with_mla_flags(self, weighted_triangle):

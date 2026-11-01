@@ -492,7 +492,9 @@ def lans_filter(G, weight="weight", signed=False):
     empirical CDF value.  The edge p-value is one minus the maximum
     of the two eCDF values (so lower p means more significant).
 
-    For directed graphs, only the source node's out-edges are used.
+    For directed graphs, the source node's out-edges and the target node's
+    in-edges are both used, and the edge p-value is computed from the more
+    significant of the two sides.
 
     Parameters
     ----------
@@ -535,10 +537,11 @@ def lans_filter(G, weight="weight", signed=False):
 
     # Pre-compute sorted weight lists per node
     if G.is_directed():
-        node_weights = {}
+        out_weights = {}
+        in_weights = {}
         for u in G.nodes():
-            ws = sorted(d[weight] for _, _, d in G.out_edges(u, data=True))
-            node_weights[u] = ws
+            out_weights[u] = sorted(d[weight] for _, _, d in G.out_edges(u, data=True))
+            in_weights[u] = sorted(d[weight] for _, _, d in G.in_edges(u, data=True))
     else:
         node_weights = {}
         for u in G.nodes():
@@ -549,9 +552,11 @@ def lans_filter(G, weight="weight", signed=False):
         w = data[weight]
 
         if G.is_directed():
-            ecdf_u = _empirical_cdf(w, node_weights[u])
-            p_hi = 1.0 - ecdf_u
-            p_lo = ecdf_u
+            ecdf_u = _empirical_cdf(w, out_weights[u])
+            ecdf_v = _empirical_cdf(w, in_weights[v])
+            # OR rule: strong/weak if significant from either side of the edge.
+            p_hi = 1.0 - max(ecdf_u, ecdf_v)
+            p_lo = min(ecdf_u, ecdf_v)
         else:
             ecdf_u = _empirical_cdf(w, node_weights[u])
             ecdf_v = _empirical_cdf(w, node_weights[v])
