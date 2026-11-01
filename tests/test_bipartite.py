@@ -251,14 +251,18 @@ def test_backbone_from_projection_sdsm_with_custom_projection(
         davis_southern_women_graph,
         davis_women_nodes,
         method="sdsm",
+        alpha=0.5,
         projection="ycn",
     )
+    scored = sdsm(davis_southern_women_graph, davis_women_nodes, projection="ycn")
+    expected = {
+        frozenset((u, v)) for u, v, p in scored.edges(data="sdsm_pvalue") if p < 0.5
+    }
     assert backbone_graph.number_of_nodes() == len(davis_women_nodes)
-    assert backbone_graph.number_of_edges() == len(davis_women_nodes) * (
-        len(davis_women_nodes) - 1
-    ) // 2
+    assert {frozenset(e) for e in backbone_graph.edges()} == expected
+    assert expected
     for _, _, data in backbone_graph.edges(data=True):
-        assert "sdsm_pvalue" in data
+        assert data["sdsm_pvalue"] < 0.5
         assert "weight" in data
 
 
@@ -352,12 +356,15 @@ class TestSDSMEdgeConstraints:
     def test_constraints_change_null(self, davis_southern_women_graph, davis_women_nodes):
         B = davis_southern_women_graph
         women = davis_women_nodes
-        artifact = next(n for n, d in B.nodes(data=True) if d["bipartite"] == 1)
-        cell = (women[0], artifact)
+        artifacts = sorted(
+            (n for n, d in B.nodes(data=True) if d["bipartite"] == 1), key=str
+        )
+        present = next((women[0], f) for f in artifacts if B.has_edge(women[0], f))
+        absent = next((women[0], f) for f in artifacts if not B.has_edge(women[0], f))
 
         base = sdsm(B, agent_nodes=women)
-        prohibited = sdsm(B, agent_nodes=women, prohibited=[cell])
-        required = sdsm(B, agent_nodes=women, required=[cell])
+        prohibited = sdsm(B, agent_nodes=women, prohibited=[absent])
+        required = sdsm(B, agent_nodes=women, required=[present])
 
         diff_pro = sum(
             1
@@ -371,22 +378,18 @@ class TestSDSMEdgeConstraints:
         )
         assert diff_pro > 0 and diff_req > 0
 
-    def test_unknown_constraint_nodes_ignored(
+    def test_unknown_constraint_nodes_raise(
         self, davis_southern_women_graph, davis_women_nodes
     ):
         B = davis_southern_women_graph
-        base = sdsm(B, agent_nodes=davis_women_nodes)
-        constrained = sdsm(
-            B, agent_nodes=davis_women_nodes, prohibited=[("missing", "absent")]
-        )
-        assert base.number_of_edges() == constrained.number_of_edges()
+        with pytest.raises(nx.NetworkXError):
+            sdsm(B, agent_nodes=davis_women_nodes, prohibited=[("missing", "absent")])
 
     def test_constraints_compose_with_signed(
         self, davis_southern_women_graph, davis_women_nodes
     ):
         artifact = next(
-            n for n, d in davis_southern_women_graph.nodes(data=True)
-            if d["bipartite"] == 1
+            n for n in davis_southern_women_graph[davis_women_nodes[0]]
         )
         H = sdsm(
             davis_southern_women_graph,
