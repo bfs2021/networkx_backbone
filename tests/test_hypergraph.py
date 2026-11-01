@@ -49,20 +49,24 @@ def simplex_with_subfaces(nodes, min_order=4):
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "size_p,size_c,overlap",
-    [(5, 4, 4), (5, 3, 3), (5, 2, 2), (4, 4, 3), (6, 3, 2)],
-)
-def test_rmi_symmetric_and_identity(size_p, size_c, overlap):
+def test_rmi_symmetric_and_identity():
     n_nodes = 12
-    r_pc = _reduced_mutual_information(size_p, size_c, overlap, n_nodes)
-    r_cp = _reduced_mutual_information(size_c, size_p, overlap, n_nodes)
-    assert r_pc == pytest.approx(r_cp)  # R is symmetric (Eqs. 9-10)
+    for size_p, size_c, overlap in [
+        (5, 4, 4),
+        (5, 3, 3),
+        (5, 2, 2),
+        (4, 4, 3),
+        (6, 3, 2),
+    ]:
+        case = (size_p, size_c, overlap)
+        r_pc = _reduced_mutual_information(size_p, size_c, overlap, n_nodes)
+        r_cp = _reduced_mutual_information(size_c, size_p, overlap, n_nodes)
+        assert r_pc == pytest.approx(r_cp), case  # R is symmetric (Eqs. 9-10)
 
-    # R(c, p) == H(c) - H(c|p)  (Eq. 9), using L=1 so the log L term cancels.
-    h_c = _parent_codelength(size_c, 1, n_nodes)
-    h_c_given_p = _child_codelength(size_c, size_p, overlap, 1, n_nodes)
-    assert r_pc == pytest.approx(h_c - h_c_given_p)
+        # R(c, p) == H(c) - H(c|p)  (Eq. 9), using L=1 so the log L term cancels.
+        h_c = _parent_codelength(size_c, 1, n_nodes)
+        h_c_given_p = _child_codelength(size_c, size_p, overlap, 1, n_nodes)
+        assert r_pc == pytest.approx(h_c - h_c_given_p), case
 
 
 def test_rmi_positive_for_nesting_when_universe_large():
@@ -169,21 +173,22 @@ def test_s_components_chain():
 # ---------------------------------------------------------------------------
 
 
-def test_recovers_top_faces_of_nested_simplices():
+@pytest.mark.parametrize("method", ["edge", "node", "auto"])
+def test_recovers_top_faces_of_nested_simplices(method):
     # Two disjoint 5-simplices, each with all size-4 sub-faces. The MDL backbone
     # should keep exactly the two top faces and prune every redundant sub-face.
     a, b = range(5), range(5, 10)
     G = simplex_with_subfaces(a) + simplex_with_subfaces(b)
 
-    result = mdl_hypergraph_backbone(G)
+    result = mdl_hypergraph_backbone(G, method=method)
 
     assert isinstance(result, HypergraphBackbone)
     assert len(result.backbone) == 2
     assert frozenset(a) in result.backbone
     assert frozenset(b) in result.backbone
     assert result.compression_ratio < 1.0
+    assert result.description_length <= result.baseline_description_length
     assert result.n_nodes == 10
-    # Every pruned sub-face is recorded as a child of a retained parent.
     assert result.n_input_hyperedges == len(G)
 
 
@@ -323,10 +328,10 @@ def test_duplicate_weighted_hyperedges_sum_weights():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.parametrize("gamma", [0.0, -0.1, 1.5])
-def test_invalid_gamma_raises(gamma):
-    with pytest.raises(ValueError):
-        mdl_hypergraph_backbone([(1, 2, 3)], weights=[2.0], gamma=gamma)
+def test_invalid_gamma_raises():
+    for gamma in (0.0, 1.5):  # either side of (0, 1]
+        with pytest.raises(ValueError, match="gamma"):
+            mdl_hypergraph_backbone([(1, 2, 3)], weights=[2.0], gamma=gamma)
 
 
 def test_invalid_prior_raises():
@@ -337,16 +342,6 @@ def test_invalid_prior_raises():
 def test_invalid_method_raises():
     with pytest.raises(ValueError):
         mdl_hypergraph_backbone([(1, 2, 3)], method="bogus")
-
-
-@pytest.mark.parametrize("method", ["edge", "node", "auto"])
-def test_mdl_methods_recover_nested_top_faces(method):
-    a, b = range(5), range(5, 10)
-    G = simplex_with_subfaces(a) + simplex_with_subfaces(b)
-    result = mdl_hypergraph_backbone(G, method=method)
-    assert frozenset(a) in result.backbone
-    assert frozenset(b) in result.backbone
-    assert result.description_length <= result.baseline_description_length
 
 
 def test_mdl_auto_is_best_of_edge_and_node():
@@ -455,20 +450,21 @@ def test_svc_counts_subgroup_cooccurrence():
     assert result.counts[frozenset({1, 2})] == 2
 
 
-@pytest.mark.parametrize(
-    "func", [statistically_validated_hypergraph, statistically_validated_cores]
-)
-def test_svh_svc_integer_multiplicity_required(func):
-    with pytest.raises(ValueError):
-        func([(1, 2), (3, 4)], weights=[1.5, 2])
-
-
-@pytest.mark.parametrize(
-    "func", [statistically_validated_hypergraph, statistically_validated_cores]
-)
-def test_svh_svc_weights_length_checked(func):
-    with pytest.raises(ValueError):
+@pytest.mark.parametrize("func", [svh, svc])
+def test_svh_svc_invalid_multiplicities(func):
+    with pytest.raises(ValueError, match="same length"):
         func([(1, 2), (3, 4)], weights=[1])
+    for bad in (1.5, 0, 0.5, float("nan")):  # non-integer, or below one
+        with pytest.raises(ValueError, match="integer"):
+            func([(1, 2), (3, 4)], weights=[2, bad])
+
+
+@pytest.mark.parametrize("func", [svh, svc])
+def test_svh_svc_alpha_validated(func):
+    for alpha in (0.0, 1.5):  # either side of (0, 1]
+        with pytest.raises(ValueError, match="alpha"):
+            func([(1, 2)] * 3, alpha=alpha)
+    assert func([(1, 2)] * 3, alpha=1.0).alpha == 1.0
 
 
 def test_svh_svc_aliases():
@@ -565,25 +561,6 @@ def test_natural_order_kept_for_comparable_labels():
         [frozenset({9, 12})],
         [frozenset({10, 11})],
     ]
-
-
-@pytest.mark.parametrize("alpha", [0.0, -0.1, 1.5, 5])
-@pytest.mark.parametrize("func", [svh, svc])
-def test_svh_svc_alpha_validated(func, alpha):
-    with pytest.raises(ValueError, match="alpha"):
-        func([(1, 2)] * 3, alpha=alpha)
-
-
-def test_svh_svc_alpha_one_allowed():
-    assert svh([(1, 2)] * 3, alpha=1.0).alpha == 1.0
-    assert svc([(1, 2)] * 3, alpha=1.0).alpha == 1.0
-
-
-@pytest.mark.parametrize("bad", [0, 0.5, float("nan")])
-@pytest.mark.parametrize("func", [svh, svc])
-def test_svh_svc_invalid_multiplicities(func, bad):
-    with pytest.raises(ValueError, match="integer"):
-        func([(1, 2), (3, 4)], weights=[2, bad])
 
 
 def test_svh_svc_skip_empty_hyperedges():

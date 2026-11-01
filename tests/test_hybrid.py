@@ -1,39 +1,14 @@
-"""Tests for hybrid backbone extraction methods."""
+"""Known-answer tests for networkx_backbone.hybrid (GLAB).
+
+Shared behaviour (attributes, weight validation, directed/multigraph
+rejection, empty graphs, no input mutation) is covered by
+``test_api_contract.py``.
+"""
 
 import networkx as nx
 import pytest
 
 from networkx_backbone import glab_filter
-
-
-class TestGLABFilter:
-    def test_adds_pvalue_attribute(self, weighted_triangle):
-        H = glab_filter(weighted_triangle)
-        for _u, _v, data in H.edges(data=True):
-            assert "glab_pvalue" in data
-
-    def test_pvalues_in_range(self, weighted_triangle):
-        H = glab_filter(weighted_triangle)
-        for _, _, data in H.edges(data=True):
-            assert 0.0 <= data["glab_pvalue"] <= 1.0
-
-    def test_preserves_structure(self, weighted_triangle):
-        H = glab_filter(weighted_triangle)
-        assert H.number_of_edges() == weighted_triangle.number_of_edges()
-        assert set(H.nodes()) == set(weighted_triangle.nodes())
-
-    def test_rejects_directed(self):
-        G = nx.DiGraph()
-        G.add_weighted_edges_from([(0, 1, 1.0)])
-        with pytest.raises(nx.NetworkXNotImplemented):
-            glab_filter(G)
-
-    def test_single_node(self):
-        G = nx.Graph()
-        G.add_node(0)
-        H = glab_filter(G)
-        assert H.number_of_nodes() == 1
-        assert H.number_of_edges() == 0
 
 
 class TestGLABPaperEquations:
@@ -92,29 +67,11 @@ class TestGLABPaperEquations:
     def test_les_miserables_reference(self, les_miserables_weighted):
         H = glab_filter(les_miserables_weighted)
         assert H["Valjean"]["Cosette"]["glab_pvalue"] == pytest.approx(0.0425, abs=1e-4)
-        kept = sum(d["glab_pvalue"] < 0.05 for *_, d in H.edges(data=True))
-        assert kept == 56
-
-    def test_does_not_mutate_input(self, weighted_triangle):
-        before = {(u, v): dict(d) for u, v, d in weighted_triangle.edges(data=True)}
-        glab_filter(weighted_triangle)
-        assert {(u, v): d for u, v, d in weighted_triangle.edges(data=True)} == before
-
-    @pytest.mark.parametrize("bad", [0.0, -1.0, float("nan"), None])
-    def test_invalid_weights_raise(self, bad):
-        G = nx.path_graph(3)
-        nx.set_edge_attributes(G, 1.0, "weight")
-        G[0][1]["weight"] = bad
-        with pytest.raises(nx.NetworkXError):
-            glab_filter(G)
+        # The pinned count of edges with p < 0.05 is in test_les_miserables.py.
 
     def test_negative_c_raises(self, weighted_triangle):
         with pytest.raises(ValueError):
             glab_filter(weighted_triangle, c=-1)
-
-    def test_rejects_multigraph(self):
-        with pytest.raises(nx.NetworkXNotImplemented):
-            glab_filter(nx.MultiGraph([(0, 1), (0, 1)]))
 
     def test_disconnected_graph(self):
         G = nx.disjoint_union(nx.cycle_graph(4), nx.path_graph(3))

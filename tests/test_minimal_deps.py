@@ -10,8 +10,6 @@ import subprocess
 import sys
 import textwrap
 
-import pytest
-
 _BLOCKER = textwrap.dedent(
     """
     import sys
@@ -36,7 +34,7 @@ def _run(code):
         text=True,
         timeout=120,
     )
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 0, proc.stderr or proc.stdout
 
 
 def test_import_without_optional_dependencies():
@@ -76,15 +74,23 @@ PURE_PYTHON_WEIGHTED = [
 ]
 
 
-@pytest.mark.parametrize("name", PURE_PYTHON_WEIGHTED)
-def test_pure_python_methods(name):
+def test_pure_python_methods():
+    # One subprocess for every method; report all failures at once.
     _run(
         f"""
+        import traceback
         import networkx as nx
         import networkx_backbone as nb
         G = nx.les_miserables_graph()
-        H = nb.{name}(G)
-        assert H.number_of_nodes() == G.number_of_nodes()
+        failures = []
+        for name in {PURE_PYTHON_WEIGHTED!r}:
+            try:
+                H = getattr(nb, name)(G)
+                assert H.number_of_nodes() == G.number_of_nodes(), "lost nodes"
+            except Exception:
+                failures.append(name + ":\\n" + traceback.format_exc())
+        if failures:
+            raise SystemExit("methods failed without numpy/scipy:\\n" + "\\n".join(failures))
         """
     )
 

@@ -13,14 +13,6 @@ def weighted_triangle():
 
 
 @pytest.fixture
-def weighted_star():
-    """Weighted star graph centered on node 0."""
-    G = nx.Graph()
-    G.add_weighted_edges_from([(0, 1, 5.0), (0, 2, 3.0), (0, 3, 1.0)])
-    return G
-
-
-@pytest.fixture
 def karate():
     """Zachary's karate club graph (unweighted)."""
     return nx.karate_club_graph()
