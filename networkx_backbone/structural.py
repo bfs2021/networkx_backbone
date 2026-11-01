@@ -1069,7 +1069,7 @@ def modularity_backbone(G, weight="weight", seed=None):
         Edge attribute key used as the weight.
     seed : integer, random_state, or None (default)
         Indicator of random number generation state, passed unchanged to
-        every :func:`networkx.community.louvain_communities` call.  With an
+        every :func:`~networkx.algorithms.community.louvain.louvain_communities` call.  With an
         integer seed each call is seeded identically, so results are
         reproducible.  See :ref:`Randomness<networkx:randomness>`.
 
