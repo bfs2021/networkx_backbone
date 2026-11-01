@@ -39,13 +39,13 @@ WEIGHTED_METHOD_EDGE_COUNTS = [
         "marginal_likelihood_filter",
         lambda G: nb.marginal_likelihood_filter(G),
         lambda H: nb.threshold_filter(H, "ml_pvalue", DEFAULT_PVALUE, mode="below"),
-        70,
+        126,
     ),
     (
         "ecm_filter",
         lambda G: nb.ecm_filter(G),
         lambda H: nb.threshold_filter(H, "ecm_pvalue", DEFAULT_PVALUE, mode="below"),
-        254,
+        72,
     ),
     (
         "lans_filter",
@@ -219,7 +219,7 @@ WEIGHTED_METHOD_EDGE_COUNTS = [
         "glab_filter",
         lambda G: nb.glab_filter(G),
         lambda H: nb.threshold_filter(H, "glab_pvalue", DEFAULT_PVALUE, mode="below"),
-        5,
+        56,
     ),
 ]
 

@@ -79,6 +79,7 @@ class TestMarginalLikelihoodFilter:
             assert 0.0 <= data["ml_pvalue"] <= 1.0
 
 
+@pytest.mark.filterwarnings("ignore:ecm_filter. the ECM solver:RuntimeWarning")
 class TestECMFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = ecm_filter(weighted_triangle)

@@ -22,8 +22,10 @@ multiple_linkage_analysis
 """
 
 import math
+import warnings
 
 import networkx as nx
+from networkx.utils import not_implemented_for
 
 from networkx_backbone._docstrings import append_complexity_docstrings
 
@@ -47,12 +49,14 @@ __all__ = [
 
 
 def _validate_weights(G, weight):
-    """Check that all edges have a positive weight attribute."""
+    """Check that all edges have a positive, finite weight attribute."""
     for u, v, data in G.edges(data=True):
         w = data.get(weight)
-        if w is None or w <= 0:
+        # ``not (0 < w < inf)`` also rejects NaN, which fails every comparison.
+        if w is None or not (0 < w < math.inf):
             raise nx.NetworkXError(
-                f"Edge ({u}, {v}) has non-positive or missing weight."
+                f"Edge ({u}, {v}) has a non-positive, non-finite, or missing "
+                f"{weight!r} attribute."
             )
 
 
@@ -75,6 +79,7 @@ def _combine_tails(p_hi, p_lo):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def disparity_filter(G, weight="weight", signed=False):
     r"""Compute disparity filter p-values for each edge.
 
@@ -89,8 +94,10 @@ def disparity_filter(G, weight="weight", signed=False):
         alpha_uv = (1.0 - p_uv) ** (k_u - 1)
 
     For an undirected edge the p-value is the *minimum* of the values
-    computed from each endpoint.  For a directed edge the p-value is
-    computed from the source node only (out-strength, out-degree).
+    computed from each endpoint.  For a directed edge (u, v) the test is run
+    from the source's outgoing links (out-strength and out-degree of *u*) and
+    from the target's incoming links (in-strength and in-degree of *v*), and
+    the p-value is the minimum of the two, following [1]_.
 
     Parameters
     ----------
@@ -112,7 +119,20 @@ def disparity_filter(G, weight="weight", signed=False):
     Raises
     ------
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    See Also
+    --------
+    threshold_filter : Keep edges whose p-value is below a threshold.
+    marginal_likelihood_filter : Null model that uses both endpoints jointly.
+
+    Notes
+    -----
+    An endpoint of degree 1 cannot reject the null model, so it contributes a
+    p-value of 1 and the edge's p-value comes from the other endpoint.
 
     References
     ----------
@@ -134,8 +154,10 @@ def disparity_filter(G, weight="weight", signed=False):
     _validate_weights(H, weight)
 
     if G.is_directed():
-        strength = dict(G.out_degree(weight=weight))
-        degree = dict(G.out_degree())
+        s_out = dict(G.out_degree(weight=weight))
+        k_out = dict(G.out_degree())
+        s_in = dict(G.in_degree(weight=weight))
+        k_in = dict(G.in_degree())
     else:
         strength = dict(G.degree(weight=weight))
         degree = dict(G.degree())
@@ -143,7 +165,10 @@ def disparity_filter(G, weight="weight", signed=False):
     for u, v, data in H.edges(data=True):
         w = data[weight]
         if G.is_directed():
-            p_hi, p_lo = _disparity_node_tails(w, strength[u], degree[u])
+            hi_u, lo_u = _disparity_node_tails(w, s_out[u], k_out[u])
+            hi_v, lo_v = _disparity_node_tails(w, s_in[v], k_in[v])
+            p_hi = min(hi_u, hi_v)
+            p_lo = min(lo_u, lo_v)
         else:
             hi_u, lo_u = _disparity_node_tails(w, strength[u], degree[u])
             hi_v, lo_v = _disparity_node_tails(w, strength[v], degree[v])
@@ -176,18 +201,28 @@ def _disparity_node_tails(w, s, k):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def noise_corrected_filter(G, weight="weight"):
     r"""Compute noise-corrected edge significance scores.
 
-    Uses a Bayesian framework where each edge weight is modelled as the
-    outcome of a binomial process [1]_.  The expected weight of edge
-    (u, v) given a total network weight *W* is::
+    Models each edge weight as the outcome of a binomial process in which
+    the total network weight *W* is distributed according to the endpoint
+    strengths, following the null model of Coscia & Neffke [1]_.  The
+    expected weight of edge (u, v) is::
 
         E[w_uv] = (s_u * s_v) / W
 
     The score measures how many standard deviations the observed weight
     lies above the expectation (a z-score).  Higher scores indicate
     more significant edges.
+
+    .. note::
+
+       This is a simplified, frequentist version of the noise-corrected
+       backbone.  It does not implement the Bayesian posterior variance
+       (delta-method) estimate of the original paper, so scores differ from
+       the reference implementation, especially for low-strength nodes.
+       See the project roadmap.
 
     For directed graphs, out-strength of *u* and in-strength of *v*
     are used.
@@ -208,7 +243,13 @@ def noise_corrected_filter(G, weight="weight"):
     Raises
     ------
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
+    See Also
+    --------
+    threshold_filter : Use ``mode="above"`` to keep high scores.
 
     References
     ----------
@@ -264,17 +305,30 @@ def noise_corrected_filter(G, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def marginal_likelihood_filter(G, weight="weight", signed=False):
     r"""Compute marginal likelihood p-values for each edge.
 
-    The marginal likelihood filter [1]_ considers edge weights as
-    integer counts under a binomial null model that accounts for
-    both endpoints' strengths.
+    The marginal likelihood filter [1]_ treats an integer edge weight as a
+    count of unit edges.  Under the null model each of the *T* unit edges
+    picks its two endpoints independently with probability proportional to
+    their strengths, so the weight of the pair (u, v) is binomial,
+    ``B(T, p_uv)``, with
+
+    .. math::
+
+        T = \frac{1}{2}\sum_i s_i, \qquad p_{uv} = \frac{s_u s_v}{2 T^2}
+
+    for undirected graphs, and :math:`T = \sum_i s^{out}_i`,
+    :math:`p_{uv} = s^{out}_u s^{in}_v / T^2` for directed graphs.  The
+    p-value is the upper tail :math:`P(X \geq w_{uv})`.  This null preserves
+    the strength sequence in expectation and is symmetric in *u* and *v*.
 
     Parameters
     ----------
     G : networkx.Graph or networkx.DiGraph
-        A NetworkX graph.  Integer weights are recommended.
+        A NetworkX graph.  Weights are rounded to the nearest integer, so the
+        method is meant for count data.
     weight : string, optional (default="weight")
         Edge attribute key for weights.  All weights must be positive.
     signed : bool, optional (default=False)
@@ -289,7 +343,14 @@ def marginal_likelihood_filter(G, weight="weight", signed=False):
     Raises
     ------
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
+    See Also
+    --------
+    disparity_filter : Tests each endpoint separately.
+    ecm_filter : Maximum-entropy null that also fixes degrees.
 
     References
     ----------
@@ -312,29 +373,31 @@ def marginal_likelihood_filter(G, weight="weight", signed=False):
     H = G.copy()
     _validate_weights(H, weight)
 
-    W = sum(d[weight] for _, _, d in G.edges(data=True))
-    if W == 0:
+    if G.number_of_edges() == 0:
         return H
 
-    if G.is_directed():
-        s_out = dict(G.out_degree(weight=weight))
-        s_in = dict(G.in_degree(weight=weight))
-    else:
-        s_out = dict(G.degree(weight=weight))
+    # Strengths of the rounded (integer) weights.
+    s_out, s_in = {}, {}
+    T = 0
+    for u, v, d in G.edges(data=True):
+        w = int(round(d[weight]))
+        T += w
+        s_out[u] = s_out.get(u, 0) + w
+        s_in[v] = s_in.get(v, 0) + w
+    if not G.is_directed():
+        # Each undirected edge adds its weight to both endpoints.
+        for node, val in s_in.items():
+            s_out[node] = s_out.get(node, 0) + val
         s_in = s_out
 
-    for u, v, data in H.edges(data=True):
-        w = data[weight]
-        su = s_out[u]
-        sv = s_in[v]
+    norm = T * T if G.is_directed() else 2 * T * T
 
-        n_param = int(round(su))
-        denom = W - su
-        if denom > 0 and n_param > 0:
-            p_param = min(sv / denom, 1.0)
-            k = int(round(w))
-            p_hi = sp_stats.binom.sf(k - 1, n_param, p_param)
-            p_lo = sp_stats.binom.cdf(k, n_param, p_param)
+    for u, v, data in H.edges(data=True):
+        k = int(round(data[weight]))
+        if T > 0 and u != v:
+            p_param = min(s_out[u] * s_in[v] / norm, 1.0)
+            p_hi = float(sp_stats.binom.sf(k - 1, T, p_param))
+            p_lo = float(sp_stats.binom.cdf(k, T, p_param))
         else:
             p_hi, p_lo = 1.0, 1.0
 
@@ -351,23 +414,42 @@ def marginal_likelihood_filter(G, weight="weight", signed=False):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
     r"""Compute ECM (Enhanced Configuration Model) p-values.
 
-    The ECM [1]_ is a maximum-entropy null model for weighted networks
-    that preserves the expected degree *and* strength sequence.  Lagrange
-    multipliers are assigned to each node and solved iteratively.
+    The ECM [1]_ is the maximum-entropy ensemble of integer-weighted graphs
+    whose expected degree *and* strength sequences equal the observed ones.
+    Each node gets two Lagrange multipliers, :math:`x_i > 0` and
+    :math:`0 < y_i < 1`.  The probability that *i* and *j* are linked and
+    the distribution of the weight of an existing link are
+
+    .. math::
+
+        p_{ij} = \frac{x_i x_j y_i y_j}{1 - y_i y_j + x_i x_j y_i y_j},
+        \qquad
+        P(w_{ij} \geq w) = p_{ij} (y_i y_j)^{w - 1}, \; w \geq 1,
+
+    and the p-value of an observed link is :math:`P(w_{ij} \geq w)`.  The
+    multipliers are found by maximizing the likelihood (L-BFGS-B with the
+    analytic gradient), which is equivalent to solving
+    :math:`\sum_j p_{ij} = k_i` and :math:`\sum_j \langle w_{ij}\rangle = s_i`.
+
+    For directed graphs, each node has separate out- and in-multipliers that
+    reproduce its out- and in-degree and strength.
 
     Parameters
     ----------
     G : networkx.Graph or networkx.DiGraph
-        A NetworkX graph.
+        A NetworkX graph.  Weights are rounded to the nearest integer, so the
+        method is meant for count data.
     weight : string, optional (default="weight")
         Edge attribute key for weights.  All weights must be positive.
     max_iter : int, optional (default=1000)
-        Maximum number of iterations for the fixed-point solver.
+        Maximum number of solver iterations.
     tol : float, optional (default=1e-6)
-        Convergence tolerance for the Lagrange multipliers.
+        Tolerance on the largest relative error of the reproduced degrees and
+        strengths.  A :class:`RuntimeWarning` is raised if it is not met.
 
     Returns
     -------
@@ -377,7 +459,24 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
     Raises
     ------
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
+    Warns
+    -----
+    RuntimeWarning
+        If the solver does not reproduce the degree and strength sequences to
+        within ``tol``.
+
+    See Also
+    --------
+    marginal_likelihood_filter : Binomial null that fixes only strengths.
+
+    Notes
+    -----
+    Self-loops are ignored when fitting the null model and get a p-value
+    of 1.  The fit costs :math:`O(n^2)` memory and time per iteration.
 
     References
     ----------
@@ -392,7 +491,7 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
     >>> G = nx.les_miserables_graph()
     >>> H = ecm_filter(G)
     >>> backbone = threshold_filter(H, "ecm_pvalue", 0.05, mode="below")
-    >>> backbone.number_of_edges() <= H.number_of_edges()
+    >>> backbone.number_of_edges() < H.number_of_edges()
     True
     """
     import numpy as np
@@ -400,82 +499,264 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
     H = G.copy()
     _validate_weights(H, weight)
 
-    nodes = list(G.nodes())
+    nodes = list(G)
     n = len(nodes)
-    if n == 0:
+    if n == 0 or G.number_of_edges() == 0:
+        for _, _, data in H.edges(data=True):
+            data["ecm_pvalue"] = 1.0
         return H
 
-    node_idx = {v: i for i, v in enumerate(nodes)}
+    idx = {v: i for i, v in enumerate(nodes)}
+    k_out = np.zeros(n)
+    k_in = np.zeros(n)
+    s_out = np.zeros(n)
+    s_in = np.zeros(n)
+    for u, v, d in G.edges(data=True):
+        if u == v:
+            continue
+        w = max(int(round(d[weight])), 1)
+        i, j = idx[u], idx[v]
+        k_out[i] += 1
+        s_out[i] += w
+        k_in[j] += 1
+        s_in[j] += w
+    if not G.is_directed():
+        k_out = k_in = k_out + k_in
+        s_out = s_in = s_out + s_in
 
-    if G.is_directed():
-        deg = np.array([G.out_degree(v) for v in nodes], dtype=float)
-        strength = np.array(
-            [G.out_degree(v, weight=weight) for v in nodes], dtype=float
+    a_out, b_out, a_in, b_in, act_out, act_in, err = _fit_ecm(
+        k_out, s_out, k_in, s_in, G.is_directed(), max_iter, tol
+    )
+    if err > tol:
+        warnings.warn(
+            f"ecm_filter: the ECM solver did not converge (largest relative "
+            f"error {err:.2e} > tol={tol:g}); p-values may be inaccurate.",
+            RuntimeWarning,
+            stacklevel=2,
         )
-    else:
-        deg = np.array([G.degree(v) for v in nodes], dtype=float)
-        strength = np.array([G.degree(v, weight=weight) for v in nodes], dtype=float)
 
-    # Initialise Lagrange multipliers
-    deg_sum = deg.sum()
-    str_sum = strength.sum()
-    x = np.where(deg > 0, deg / max(deg_sum, 1), 1e-10)
-    y = np.where(strength > 0, strength / max(str_sum, 1), 1e-10)
-    y = np.clip(y, 1e-15, 1.0 - 1e-10)
-
-    # Fixed-point iterations
-    for _ in range(max_iter):
-        x_new = np.zeros(n)
-        y_new = np.zeros(n)
-
-        for i in range(n):
-            sum_x = 0.0
-            sum_y = 0.0
-            for j in range(n):
-                if i == j:
-                    continue
-                yy = y[i] * y[j]
-                if yy >= 1.0:
-                    yy = 1.0 - 1e-15
-                denom = 1.0 - yy
-                xy = x[i] * x[j]
-                p_ij = (xy * yy) / (denom + xy * yy)
-                if denom > 0:
-                    w_ij = (xy * yy) / (denom * denom + xy * yy * denom)
-                else:
-                    w_ij = 0
-                sum_x += p_ij
-                sum_y += w_ij
-
-            x_new[i] = deg[i] / sum_x if sum_x > 0 else 1e-10
-            y_new[i] = strength[i] / sum_y if sum_y > 0 else 1e-10
-
-        y_new = np.clip(y_new, 1e-15, 1.0 - 1e-10)
-
-        if np.max(np.abs(x_new - x)) < tol and np.max(np.abs(y_new - y)) < tol:
-            x, y = x_new, y_new
-            break
-        x, y = x_new, y_new
-
-    # Compute p-values using geometric distribution
     for u, v, data in H.edges(data=True):
-        w = data[weight]
-        i, j = node_idx[u], node_idx[v]
-        yy = y[i] * y[j]
-        if yy >= 1.0:
-            yy = 1.0 - 1e-15
-
-        q = yy
-        if 0 < q < 1:
-            pval = q ** int(round(w))
-        elif q >= 1:
-            pval = 0.0
-        else:
-            pval = 1.0
-
-        data["ecm_pvalue"] = float(max(min(pval, 1.0), 0.0))
+        if u == v:
+            data["ecm_pvalue"] = 1.0
+            continue
+        i, j = idx[u], idx[v]
+        # x_i x_j y_i y_j = exp(-(a_i + a_j)); y_i y_j = exp(-(b_i + b_j)).
+        # Work in log space: x can be huge when y is tiny.
+        log_xxyy = -float(a_out[i] + a_in[j])
+        log_yy = -float(b_out[i] + b_in[j])
+        log_one_minus_yy = math.log(-math.expm1(log_yy))
+        hi = max(log_xxyy, log_one_minus_yy)
+        log_denom = hi + math.log(
+            math.exp(log_xxyy - hi) + math.exp(log_one_minus_yy - hi)
+        )
+        w = max(int(round(data[weight])), 1)
+        pval = math.exp(log_xxyy - log_denom + (w - 1) * log_yy)
+        data["ecm_pvalue"] = float(min(max(pval, 0.0), 1.0))
 
     return H
+
+
+# Largest parameter vector for which the dense Newton polish is used
+# (2 parameters per node undirected, 4 directed).
+_ECM_NEWTON_MAX_PARAMS = 4000
+
+
+def _fit_ecm(k_out, s_out, k_in, s_in, directed, max_iter, tol):
+    """Maximum-likelihood ECM multipliers.
+
+    Works with ``x * y = exp(-c)`` and ``y = exp(-b)`` (``b > 0`` keeps
+    ``y < 1``).  Parameterizing by ``x * y`` keeps the problem well
+    conditioned for nodes whose links all have weight 1, where ``y -> 0``
+    and ``x -> inf`` with finite product.  Nodes with zero degree are pinned
+    to ``x = 0``.  Returns
+    ``(x_out, y_out, x_in, y_in, max_relative_error)``.
+    """
+    import numpy as np
+    from scipy.optimize import minimize
+
+    n = len(k_out)
+    act_out = k_out > 0
+    act_in = k_in > 0
+    off_diag = ~np.eye(n, dtype=bool)
+
+    def unpack(theta):
+        if directed:
+            a_out, b_out, a_in, b_in = np.split(theta, 4)
+        else:
+            a_out, b_out = np.split(theta, 2)
+            a_in, b_in = a_out, b_out
+        return a_out, b_out, a_in, b_in
+
+    def expectations(theta):
+        a_out, b_out, a_in, b_in = unpack(theta)
+        # log of x_i x_j y_i y_j and of y_i y_j, for every ordered pair.
+        log_yy = -(b_out[:, None] + b_in[None, :])
+        log_xxyy = -(a_out[:, None] + a_in[None, :])
+        one_minus_yy = -np.expm1(log_yy)
+        # q_ij = x_i x_j y_i y_j / (1 - y_i y_j); log Z_ij = log(1 + q_ij)
+        log_q = log_xxyy - np.log(one_minus_yy)
+        mask = off_diag & act_out[:, None] & act_in[None, :]
+        log_q = np.where(mask, log_q, -np.inf)
+        log_z = np.logaddexp(0.0, log_q)
+        p = np.exp(log_q - log_z)  # link probability
+        w_mean = p / one_minus_yy  # expected weight
+        return p, w_mean, log_z
+
+    def objective(theta):
+        a_out, b_out, a_in, b_in = unpack(theta)
+        p, w_mean, log_z = expectations(theta)
+        # With x*y = exp(-c), the sufficient statistic of b is s - k.
+        if directed:
+            nll = (
+                a_out @ k_out
+                + b_out @ (s_out - k_out)
+                + a_in @ k_in
+                + b_in @ (s_in - k_in)
+                + log_z.sum()
+            )
+            grad = np.concatenate(
+                [
+                    k_out - p.sum(1),
+                    (s_out - k_out) - (w_mean - p).sum(1),
+                    k_in - p.sum(0),
+                    (s_in - k_in) - (w_mean - p).sum(0),
+                ]
+            )
+        else:
+            # Symmetric matrices count each unordered pair twice.
+            nll = a_out @ k_out + b_out @ (s_out - k_out) + 0.5 * log_z.sum()
+            grad = np.concatenate(
+                [k_out - p.sum(1), (s_out - k_out) - (w_mean - p).sum(1)]
+            )
+        return nll, grad
+
+    def start(k, s):
+        total = max(k.sum(), 1.0)
+        # Chung-Lu-like guess for x*y, and mean link weight 1/(1-y) ~ s/k.
+        a = -np.log(np.where(k > 0, k / np.sqrt(total), 1.0))
+        ratio = np.where(k > 0, s / np.maximum(k, 1.0), 2.0)
+        b = -np.log(np.clip(1.0 - 1.0 / np.maximum(ratio, 1.0 + 1e-6), 1e-12, 1.0))
+        return a, b
+
+    a0, b0 = start(k_out, s_out)
+    if directed:
+        a1, b1 = start(k_in, s_in)
+        theta0 = np.concatenate([a0, b0, a1, b1])
+    else:
+        theta0 = np.concatenate([a0, b0])
+    b_floor = 1e-10
+    bounds = []
+    blocks = 2 if directed else 1
+    for _ in range(blocks):
+        bounds += [(None, None)] * n + [(b_floor, None)] * n
+
+    def rel_err(obs, fit):
+        ok = obs > 0
+        return float(np.max(np.abs(fit[ok] - obs[ok]) / obs[ok])) if ok.any() else 0.0
+
+    def max_error(theta):
+        p, w_mean, _ = expectations(theta)
+        if directed:
+            return max(
+                rel_err(k_out, p.sum(1)),
+                rel_err(s_out, w_mean.sum(1)),
+                rel_err(k_in, p.sum(0)),
+                rel_err(s_in, w_mean.sum(0)),
+            )
+        return max(rel_err(k_out, p.sum(1)), rel_err(s_out, w_mean.sum(1)))
+
+    def hessian(theta):
+        p, w_mean, _ = expectations(theta)
+        m = w_mean - p
+        with np.errstate(divide="ignore", invalid="ignore"):
+            g = np.where(p > 0, m / np.where(p > 0, p, 1.0), 0.0)
+        A = p * (1.0 - p)  # -dp/dt
+        B = A * g  # -dp/dr  (= -dm/dt)
+        C = A * g * g + p * g * (1.0 + g)  # -dm/dr
+        if directed:
+            Hm = np.zeros((4 * n, 4 * n))
+            # parameter order: c_out, b_out, c_in, b_in
+            pairs = {(0, 0): A, (0, 1): B, (1, 1): C}
+            for (r, c), M in pairs.items():
+                Hm[r * n : (r + 1) * n, c * n : (c + 1) * n] += np.diag(M.sum(1))
+                Hm[(r + 2) * n : (r + 3) * n, (c + 2) * n : (c + 3) * n] += np.diag(
+                    M.sum(0)
+                )
+                Hm[r * n : (r + 1) * n, (c + 2) * n : (c + 3) * n] += M
+                Hm[(c + 2) * n : (c + 3) * n, r * n : (r + 1) * n] += M.T
+                if r != c:
+                    Hm[c * n : (c + 1) * n, r * n : (r + 1) * n] += np.diag(M.sum(1))
+                    Hm[(c + 2) * n : (c + 3) * n, (r + 2) * n : (r + 3) * n] += np.diag(
+                        M.sum(0)
+                    )
+                    Hm[c * n : (c + 1) * n, (r + 2) * n : (r + 3) * n] += M
+                    Hm[(r + 2) * n : (r + 3) * n, c * n : (c + 1) * n] += M.T
+            return Hm
+        # Undirected: symmetric pair matrices, each unordered pair once per row.
+        Hcc = np.diag(A.sum(1)) + A
+        Hcb = np.diag(B.sum(1)) + B
+        Hbb = np.diag(C.sum(1)) + C
+        return np.block([[Hcc, Hcb], [Hcb.T, Hbb]])
+
+    lower = np.array([lo if lo is not None else -np.inf for lo, _ in bounds])
+
+    theta = theta0
+    use_newton = len(theta0) <= _ECM_NEWTON_MAX_PARAMS
+    # With a Newton polish available, L-BFGS-B only needs to get close.
+    iters_left = min(max_iter, 200) if use_newton else max_iter
+    # Restarting L-BFGS-B resets its curvature estimate, which helps it
+    # finish ill-conditioned problems; a few restarts are plenty.
+    for _ in range(1 if use_newton else 3):
+        res = minimize(
+            objective,
+            theta,
+            jac=True,
+            method="L-BFGS-B",
+            bounds=bounds,
+            options={
+                "maxiter": iters_left,
+                "maxfun": 4 * max_iter,
+                "gtol": 1e-12,
+                "ftol": 1e-15,
+            },
+        )
+        theta = res.x
+        iters_left -= res.nit
+        if max_error(theta) <= tol or iters_left <= 0:
+            break
+
+    # Damped Newton polish with the analytic Hessian.  The negative
+    # log-likelihood is convex, so this converges quadratically; it needs a
+    # dense solve, so it is only used for moderately sized graphs.
+    if use_newton and max_error(theta) > tol:
+        f, grad = objective(theta)
+        for _ in range(min(100, max_iter)):
+            Hm = hessian(theta)
+            # The directed model has a gauge freedom (shift out-parameters
+            # up and in-parameters down), so the Hessian is singular; a small
+            # scaled ridge keeps the step in the identifiable subspace.
+            Hm[np.diag_indices_from(Hm)] += 1e-9 * max(np.abs(Hm).max(), 1.0)
+            try:
+                step = np.linalg.solve(Hm, grad)
+            except np.linalg.LinAlgError:
+                step = np.linalg.lstsq(Hm, grad, rcond=None)[0]
+            t = 1.0
+            while t > 1e-8:
+                cand = np.maximum(theta - t * step, lower)
+                f_new, grad_new = objective(cand)
+                if f_new <= f + 1e-4 * t * (grad @ (cand - theta)) or f_new < f:
+                    break
+                t *= 0.5
+            else:
+                break
+            theta, f, grad = cand, f_new, grad_new
+            if max_error(theta) <= tol:
+                break
+
+    err = max_error(theta)
+
+    a_out, b_out, a_in, b_in = unpack(theta)
+    return a_out, b_out, a_in, b_in, act_out, act_in, err
 
 
 # =====================================================================
@@ -483,6 +764,7 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def lans_filter(G, weight="weight", signed=False):
     r"""Compute LANS (Locally Adaptive Network Sparsification) p-values.
 
@@ -493,6 +775,12 @@ def lans_filter(G, weight="weight", signed=False):
     of the two eCDF values (so lower p means more significant).
 
     For directed graphs, only the source node's out-edges are used.
+
+    The p-value is ``1 - F(w)``, where ``F`` is the empirical CDF of the
+    node's weights.  The strongest link of each node therefore gets a p-value
+    of 0, and so does the only link of a degree-1 node.  LANS always keeps
+    these links; this is how the method guarantees that no node becomes
+    isolated.
 
     Parameters
     ----------
@@ -512,7 +800,13 @@ def lans_filter(G, weight="weight", signed=False):
     Raises
     ------
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
+    See Also
+    --------
+    disparity_filter : Parametric counterpart with a uniform null model.
 
     References
     ----------
@@ -567,13 +861,21 @@ def lans_filter(G, weight="weight", signed=False):
     return H
 
 
+@not_implemented_for("multigraph")
 def multiple_linkage_analysis(G, alpha=0.05, weight="weight"):
     r"""Extract a backbone using Multiple Linkage Analysis (MLA).
 
-    MLA is a local-significance method that selects edges whose weights are
-    unusually high relative to neighboring edges. This implementation uses
-    edge-level empirical CDF p-values from :func:`lans_filter` and retains
-    edges with p-value <= ``alpha``.
+    Selects edges whose weights are unusually high relative to the other
+    edges of their endpoints, using the edge-level empirical-CDF p-values of
+    :func:`lans_filter` and keeping edges with p-value <= ``alpha``.  This
+    follows the netbone [2]_ implementation.
+
+    .. note::
+
+       The original multiple linkage analysis of Van Nuffel et al. [1]_
+       instead compares each node's sorted link weights with a sequence of
+       ideal "dominance" distributions and keeps the links of the best fit.
+       That procedure is not implemented here yet; see the project roadmap.
 
     Parameters
     ----------
@@ -595,12 +897,16 @@ def multiple_linkage_analysis(G, alpha=0.05, weight="weight"):
     ValueError
         If ``alpha`` is outside [0, 1].
     NetworkXError
-        If any edge has a non-positive or missing weight.
+        If any edge has a non-positive, non-finite, or missing weight.
+    NetworkXNotImplemented
+        If *G* is a multigraph.
 
     References
     ----------
-    .. [1] Van Nuffel, N., Heyndrickx, C., & Wets, G. (2010). Measuring
-       hierarchy and reciprocity in networks.
+    .. [1] Van Nuffel, N., Saey, P., Derudder, B., Devriendt, L., & Witlox, F.
+       (2010). Measuring hierarchical differentiation: connectivity and
+       dominance in the European urban network. *Transportation Planning and
+       Technology*, 33(4), 343-366. https://doi.org/10.1080/03081060.2010.494028
     .. [2] Yassin, A., Haidar, A., Cherifi, H., Seba, H., & Togni, O. (2023).
        An evaluation tool for backbone extraction techniques in weighted
        complex networks. *Scientific Reports*, 13, 17000.
@@ -674,8 +980,8 @@ _COMPLEXITY = {
     },
     "ecm_filter": {
         "time": "O(I * n^2 + m)",
-        "space": "O(n + m)",
-        "notes": "I=max_iter, n=|V|, m=|E|.",
+        "space": "O(n^2 + m)",
+        "notes": "I=solver iterations; a dense O(n^3) Newton polish is used for n <= 2000.",
     },
     "lans_filter": {
         "time": "O(m log n)",

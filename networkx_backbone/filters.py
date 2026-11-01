@@ -5,6 +5,8 @@ After a backbone method annotates edges (or nodes) with scores or p-values,
 these functions extract the final subgraph.
 """
 
+import math
+
 import networkx as nx
 
 from networkx_backbone._docstrings import append_complexity_docstrings
@@ -43,6 +45,8 @@ def adjust_pvalues(pvalues, method="bh"):
     -------
     adjusted : list of float
         Adjusted p-values in the same order as the input, each in ``[0, 1]``.
+        Missing values (NaN) stay NaN and, as in R's ``p.adjust``, do not
+        count toward the number of tests.
 
     Raises
     ------
@@ -73,14 +77,23 @@ def adjust_pvalues(pvalues, method="bh"):
             f"method must be one of {_MTC_METHODS}, got {method!r}"
         )
 
-    p = [float(x) for x in pvalues]
+    raw = [float(x) for x in pvalues]
+    finite = [i for i, x in enumerate(raw) if not math.isnan(x)]
+    adjusted = [math.nan] * len(raw)
+    for i, val in zip(finite, _adjust([raw[i] for i in finite], method_l)):
+        adjusted[i] = min(1.0, max(0.0, val))
+    return adjusted
+
+
+def _adjust(p, method_l):
+    """Adjust a list of non-missing p-values (helper for adjust_pvalues)."""
     n = len(p)
     if n == 0:
         return []
     if method_l == "none":
-        return [min(1.0, max(0.0, x)) for x in p]
+        return list(p)
     if method_l == "bonferroni":
-        return [min(1.0, n * x) for x in p]
+        return [n * x for x in p]
 
     if method_l == "holm":
         # Step-down over ascending p-values with running maximum.
@@ -114,7 +127,7 @@ def adjust_pvalues(pvalues, method="bh"):
     return out
 
 
-def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
+def multigraph_to_weighted(G, weight="weight", edge_type_attr=None, aggregate="count"):
     """Convert a MultiGraph/MultiDiGraph into a weighted simple graph.
 
     Parallel edges between the same node pair are collapsed into a single
@@ -131,7 +144,13 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
     edge_type_attr : string or None, optional (default=None)
         If provided, weight is the count of distinct values of this edge
         attribute among parallel edges. If missing on all parallel edges,
-        falls back to the number of parallel edges.
+        falls back to the number of parallel edges.  Only used with
+        ``aggregate="count"``.
+    aggregate : {"count", "sum", "max", "min", "mean"}, optional (default="count")
+        How parallel edges are combined.  ``"count"`` sets the weight to the
+        number of parallel edges (or of distinct edge types).  The other
+        options combine the existing *weight* attribute of the parallel edges,
+        treating a missing weight as 1.
 
     Returns
     -------
@@ -144,10 +163,14 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
         - ``"edge_type_count"``: number of distinct edge types (only when
           ``edge_type_attr`` is provided)
 
+    Raises
+    ------
+    ValueError
+        If *aggregate* is not recognized.
+
     Examples
     --------
     >>> import networkx as nx
-
     >>> from networkx_backbone import multigraph_to_weighted
     >>> B = nx.davis_southern_women_graph()
     >>> MG = nx.MultiGraph()
@@ -158,7 +181,24 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
     >>> H = multigraph_to_weighted(MG, edge_type_attr="edge_type")
     >>> H[u][v]["weight"]
     2
+
+    Sum existing weights instead of counting edges:
+
+    >>> M = nx.MultiGraph([(0, 1, {"weight": 10}), (0, 1, {"weight": 20})])
+    >>> multigraph_to_weighted(M, aggregate="sum")[0][1]["weight"]
+    30
     """
+    combiners = {
+        "sum": sum,
+        "max": max,
+        "min": min,
+        "mean": lambda ws: sum(ws) / len(ws),
+    }
+    if aggregate != "count" and aggregate not in combiners:
+        raise ValueError(
+            f"aggregate must be 'count', 'sum', 'max', 'min', or 'mean', got {aggregate!r}"
+        )
+
     if not G.is_multigraph():
         H = G.copy()
         for _, _, data in H.edges(data=True):
@@ -166,6 +206,7 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
         return H
 
     H = nx.DiGraph() if G.is_directed() else nx.Graph()
+    H.graph.update(G.graph)
     H.add_nodes_from(G.nodes(data=True))
 
     grouped = {}
@@ -177,7 +218,11 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
         edge_count = len(edge_datas)
         out_data = {"edge_count": edge_count}
 
-        if edge_type_attr is None:
+        if aggregate != "count":
+            out_data[weight] = combiners[aggregate](
+                [data.get(weight, 1) for data in edge_datas]
+            )
+        elif edge_type_attr is None:
             out_data[weight] = edge_count
         else:
             present_types = [
@@ -190,6 +235,39 @@ def multigraph_to_weighted(G, weight="weight", edge_type_attr=None):
         H.add_edge(u, v, **out_data)
 
     return H
+
+
+def _empty_like(G, nodes=True):
+    """New graph of the same type carrying G's graph (and node) attributes."""
+    H = G.__class__()
+    H.graph.update(G.graph)
+    if nodes:
+        H.add_nodes_from(G.nodes(data=True))
+    return H
+
+
+def _edge_iter(G):
+    """Yield ``(u, v, key, data)``; ``key`` is None for simple graphs."""
+    if G.is_multigraph():
+        yield from G.edges(keys=True, data=True)
+    else:
+        for u, v, data in G.edges(data=True):
+            yield u, v, None, data
+
+
+def _add_edge(H, G, u, v, key, data):
+    """Copy one edge (with its key on multigraphs) and its endpoints' data."""
+    for node in (u, v):
+        if node not in H:
+            H.add_node(node, **G.nodes[node])
+    if key is None:
+        H.add_edge(u, v, **data)
+    else:
+        H.add_edge(u, v, key=key, **data)
+
+
+def _is_score(val):
+    return val is not None and not (isinstance(val, float) and math.isnan(val))
 
 
 def threshold_filter(
@@ -230,7 +308,16 @@ def threshold_filter(
     H : graph
         Filtered subgraph of the same type as *G*.  When filtering edges,
         all original nodes are preserved by default.  When filtering nodes,
-        only retained nodes and their mutual edges are preserved.
+        only retained nodes and their mutual edges are preserved.  Graph,
+        node, and edge attributes are copied (as are edge keys of
+        multigraphs).  Elements without the *score* attribute (or with a NaN
+        score) are dropped.
+
+    See Also
+    --------
+    fraction_filter : Keep a fixed share of elements instead.
+    boolean_filter : Keep edges flagged by a ``*_keep`` attribute.
+    adjust_pvalues : The multiple-testing corrections behind ``mtc``.
 
     Raises
     ------
@@ -261,19 +348,15 @@ def threshold_filter(
         )
 
     if filter_on == "edges":
-        H = G.__class__()
-        if include_all_nodes:
-            H.add_nodes_from(G.nodes(data=True))
-        scored = [
-            (u, v, data) for u, v, data in G.edges(data=True) if data.get(score) is not None
-        ]
+        H = _empty_like(G, nodes=include_all_nodes)
+        scored = [e for e in _edge_iter(G) if e[3].get(score) is not None]
         if mtc != "none":
-            values = adjust_pvalues([data[score] for _, _, data in scored], mtc)
+            values = adjust_pvalues([e[3][score] for e in scored], mtc)
         else:
-            values = [data[score] for _, _, data in scored]
-        for (u, v, data), val in zip(scored, values):
+            values = [e[3][score] for e in scored]
+        for (u, v, key, data), val in zip(scored, values):
             if _passes(val):
-                H.add_edge(u, v, **data)
+                _add_edge(H, G, u, v, key, data)
         return H
 
     elif filter_on == "nodes":
@@ -316,12 +399,18 @@ def fraction_filter(G, score, fraction, ascending=True, filter_on="edges"):
     Returns
     -------
     H : graph
-        Filtered subgraph of the same type as *G*.
+        Filtered subgraph of the same type as *G*.  Elements without the
+        *score* attribute are never kept; the fraction is taken of the scored
+        elements.  Ties are broken by input order.
 
     Raises
     ------
     ValueError
         If *fraction* is not in (0, 1] or *filter_on* is invalid.
+
+    See Also
+    --------
+    threshold_filter : Keep elements passing a fixed cutoff instead.
 
     Examples
     --------
@@ -337,30 +426,22 @@ def fraction_filter(G, score, fraction, ascending=True, filter_on="edges"):
     if not 0 < fraction <= 1:
         raise ValueError("fraction must be in (0, 1]")
 
+    sign = 1 if ascending else -1
     if filter_on == "edges":
-        scored = [
-            (u, v, data, data.get(score, float("inf") if ascending else float("-inf")))
-            for u, v, data in G.edges(data=True)
-        ]
-        scored.sort(key=lambda x: x[3], reverse=not ascending)
-        n_keep = max(1, int(len(scored) * fraction))
-        keep = scored[:n_keep]
-
-        H = G.__class__()
-        H.add_nodes_from(G.nodes(data=True))
-        for u, v, data, _ in keep:
-            H.add_edge(u, v, **data)
+        scored = [e for e in _edge_iter(G) if _is_score(e[3].get(score))]
+        # A stable sort on the signed score keeps input order among ties.
+        scored.sort(key=lambda e: sign * e[3][score])
+        n_keep = max(1, int(len(scored) * fraction)) if scored else 0
+        H = _empty_like(G)
+        for u, v, key, data in scored[:n_keep]:
+            _add_edge(H, G, u, v, key, data)
         return H
 
     elif filter_on == "nodes":
-        scored = [
-            (node, data, data.get(score, float("inf") if ascending else float("-inf")))
-            for node, data in G.nodes(data=True)
-        ]
-        scored.sort(key=lambda x: x[2], reverse=not ascending)
-        n_keep = max(1, int(len(scored) * fraction))
-        keep = {s[0] for s in scored[:n_keep]}
-        return G.subgraph(keep).copy()
+        scored = [node for node, data in G.nodes(data=True) if _is_score(data.get(score))]
+        scored.sort(key=lambda node: sign * G.nodes[node][score])
+        n_keep = max(1, int(len(scored) * fraction)) if scored else 0
+        return G.subgraph(scored[:n_keep]).copy()
 
     else:
         raise ValueError(f"filter_on must be 'edges' or 'nodes', got {filter_on!r}")
@@ -380,7 +461,12 @@ def boolean_filter(G, score):
     -------
     H : graph
         A new graph of the same type as *G* containing only edges for
-        which ``data[score]`` is truthy.  All original nodes are preserved.
+        which ``data[score]`` is truthy.  All original nodes are preserved,
+        along with graph, node, and edge attributes.
+
+    See Also
+    --------
+    threshold_filter : Filter on a numeric score.
 
     Examples
     --------
@@ -393,11 +479,10 @@ def boolean_filter(G, score):
     >>> H.number_of_edges() <= scored.number_of_edges()
     True
     """
-    H = G.__class__()
-    H.add_nodes_from(G.nodes(data=True))
-    for u, v, data in G.edges(data=True):
+    H = _empty_like(G)
+    for u, v, key, data in _edge_iter(G):
         if data.get(score):
-            H.add_edge(u, v, **data)
+            _add_edge(H, G, u, v, key, data)
     return H
 
 
@@ -417,7 +502,9 @@ def consensus_backbone(*backbones):
     -------
     H : graph
         A new graph of the same type as the first backbone, containing
-        only edges present in every input.
+        only edges present in every input, with the edge, node, and graph
+        attributes of the first backbone.  Edges keep the order of the first
+        backbone.  Parallel edges of multigraphs are matched by node pair.
 
     Raises
     ------
@@ -444,25 +531,17 @@ def consensus_backbone(*backbones):
     if len(backbones) < 2:
         raise ValueError("consensus_backbone requires at least 2 graphs")
 
-    edge_sets = []
-    for bb in backbones:
-        if bb.is_directed():
-            edge_sets.append(set(bb.edges()))
-        else:
-            edge_sets.append({(min(u, v), max(u, v)) for u, v in bb.edges()})
+    def pair(bb, u, v):
+        # frozenset keys work for nodes of mixed, unorderable types.
+        return (u, v) if bb.is_directed() else frozenset((u, v))
 
-    common = edge_sets[0]
-    for es in edge_sets[1:]:
-        common &= es
+    others = [{pair(bb, u, v) for u, v in bb.edges()} for bb in backbones[1:]]
 
     ref = backbones[0]
-    H = ref.__class__()
-    for u, v in common:
-        if ref.has_edge(u, v):
-            H.add_edge(u, v, **ref[u][v])
-        elif not ref.is_directed() and ref.has_edge(v, u):
-            H.add_edge(v, u, **ref[v][u])
-
+    H = _empty_like(ref, nodes=False)
+    for u, v, key, data in _edge_iter(ref):
+        if all(pair(ref, u, v) in es for es in others):
+            _add_edge(H, ref, u, v, key, data)
     return H
 
 

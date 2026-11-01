@@ -1,5 +1,7 @@
 """Evaluation measures for comparing backbones against their original network."""
 
+import inspect
+
 import networkx as nx
 
 from networkx_backbone._docstrings import append_complexity_docstrings
@@ -123,10 +125,13 @@ def weight_fraction(original, backbone, weight="weight"):
 
 
 def reachability(G):
-    """Compute the fraction of node pairs that can communicate.
+    """Compute the fraction of ordered node pairs joined by a path.
 
-    For a connected graph this is 1.0.  For a graph with all isolated
-    nodes this is 0.0.
+    For a connected undirected graph (or a strongly connected directed graph)
+    this is 1.0.  For a graph with all isolated nodes this is 0.0.  For a
+    directed graph, a pair *(i, j)* counts only if *j* can be reached from
+    *i* along edge directions.  Graphs with fewer than two nodes have no
+    pairs; their reachability is defined as 1.0.
 
     Parameters
     ----------
@@ -157,16 +162,18 @@ def reachability(G):
         return 1.0
     total_pairs = n * (n - 1)
 
-    if G.is_directed():
-        components = nx.weakly_connected_components(G)
-    else:
-        components = nx.connected_components(G)
+    if not G.is_directed():
+        reachable = sum(len(c) * (len(c) - 1) for c in nx.connected_components(G))
+        return reachable / total_pairs
 
+    # Every node of a strongly connected component reaches the rest of its
+    # component and every node of each component downstream of it.
+    C = nx.condensation(G)
+    size = {c: len(C.nodes[c]["members"]) for c in C}
     reachable = 0
-    for comp in components:
-        c = len(comp)
-        reachable += c * (c - 1)
-
+    for c in C:
+        downstream = sum(size[d] for d in nx.descendants(C, c))
+        reachable += size[c] * (size[c] - 1 + downstream)
     return reachable / total_pairs
 
 
@@ -258,7 +265,9 @@ def compare_backbones(original, backbones, measures=None, weight="weight"):
         float.  Defaults to ``[node_fraction, edge_fraction,
         weight_fraction]``.
     weight : string, optional (default="weight")
-        Weight attribute (forwarded to :func:`weight_fraction`).
+        Weight attribute, forwarded to every measure that accepts a
+        ``weight`` keyword (such as :func:`weight_fraction` and
+        :func:`ks_weight`).
 
     Returns
     -------
@@ -284,15 +293,24 @@ def compare_backbones(original, backbones, measures=None, weight="weight"):
     if measures is None:
         measures = [node_fraction, edge_fraction, weight_fraction]
 
+    takes_weight = {m: _accepts_weight(m) for m in measures}
     results = {}
     for name, bb in backbones.items():
         results[name] = {}
         for m in measures:
-            if m is weight_fraction:
-                results[name][m.__name__] = m(original, bb, weight=weight)
-            else:
-                results[name][m.__name__] = m(original, bb)
+            kwargs = {"weight": weight} if takes_weight[m] else {}
+            results[name][getattr(m, "__name__", repr(m))] = m(original, bb, **kwargs)
     return results
+
+
+def _accepts_weight(func):
+    try:
+        params = inspect.signature(func).parameters
+    except (TypeError, ValueError):
+        return False
+    return "weight" in params or any(
+        p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values()
+    )
 
 
 _COMPLEXITY = {
