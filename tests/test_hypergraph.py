@@ -1,6 +1,8 @@
 """Tests for hypergraph backbone extraction (MDL method, Kirkley et al. 2026)."""
 
 import itertools
+import math
+import random
 
 import pytest
 
@@ -18,12 +20,15 @@ from networkx_backbone import (
     svc,
     svh,
 )
+from networkx_backbone import hypergraph as hg
 from networkx_backbone.hypergraph import (
+    _bh_threshold,
     _child_codelength,
+    _log2_binom,
     _parent_codelength,
     _reduced_mutual_information,
+    _weight_codelength,
 )
-
 
 # ---------------------------------------------------------------------------
 # Fixtures / helpers
@@ -167,7 +172,7 @@ def test_s_components_chain():
 def test_recovers_top_faces_of_nested_simplices():
     # Two disjoint 5-simplices, each with all size-4 sub-faces. The MDL backbone
     # should keep exactly the two top faces and prune every redundant sub-face.
-    a, b = range(0, 5), range(5, 10)
+    a, b = range(5), range(5, 10)
     G = simplex_with_subfaces(a) + simplex_with_subfaces(b)
 
     result = mdl_hypergraph_backbone(G)
@@ -183,7 +188,7 @@ def test_recovers_top_faces_of_nested_simplices():
 
 
 def test_downward_closure_compresses_and_keeps_tops():
-    a, b = range(0, 5), range(5, 10)
+    a, b = range(5), range(5, 10)
     G = simplex_with_subfaces(a, min_order=2) + simplex_with_subfaces(b, min_order=2)
 
     result = mdl_hypergraph_backbone(G)
@@ -203,21 +208,21 @@ def test_disjoint_hyperedges_are_incompressible():
 
 
 def test_description_length_never_exceeds_baseline():
-    G = simplex_with_subfaces(range(0, 6), min_order=2)
+    G = simplex_with_subfaces(range(6), min_order=2)
     result = mdl_hypergraph_backbone(G)
     assert result.description_length <= result.baseline_description_length
     assert 0.0 <= result.compression_ratio <= 1.0
 
 
 def test_compression_ratio_helper_matches_backbone():
-    G = simplex_with_subfaces(range(0, 5)) + simplex_with_subfaces(range(5, 10))
+    G = simplex_with_subfaces(range(5)) + simplex_with_subfaces(range(5, 10))
     eta = hypergraph_compression_ratio(G)
     assert eta == pytest.approx(mdl_hypergraph_backbone(G).compression_ratio)
     assert 0.0 <= eta <= 1.0
 
 
 def test_deterministic():
-    G = simplex_with_subfaces(range(0, 5), min_order=2) + simplex_with_subfaces(
+    G = simplex_with_subfaces(range(5), min_order=2) + simplex_with_subfaces(
         range(5, 10), min_order=2
     )
     r1 = mdl_hypergraph_backbone(G)
@@ -336,7 +341,7 @@ def test_invalid_method_raises():
 
 @pytest.mark.parametrize("method", ["edge", "node", "auto"])
 def test_mdl_methods_recover_nested_top_faces(method):
-    a, b = range(0, 5), range(5, 10)
+    a, b = range(5), range(5, 10)
     G = simplex_with_subfaces(a) + simplex_with_subfaces(b)
     result = mdl_hypergraph_backbone(G, method=method)
     assert frozenset(a) in result.backbone
@@ -347,7 +352,7 @@ def test_mdl_methods_recover_nested_top_faces(method):
 def test_mdl_auto_is_best_of_edge_and_node():
     # On a downward-closed simplex the two greedy schemes differ; "auto" must
     # match the lower-description-length one.
-    G = simplex_with_subfaces(range(0, 6), min_order=2)
+    G = simplex_with_subfaces(range(6), min_order=2)
     edge = mdl_hypergraph_backbone(G, method="edge").description_length
     node = mdl_hypergraph_backbone(G, method="node").description_length
     auto = mdl_hypergraph_backbone(G, method="auto").description_length
@@ -402,9 +407,7 @@ def test_svh_validates_over_represented_pair():
 
 def test_svh_weights_equal_repeated_edges():
     repeated = statistically_validated_hypergraph([(1, 2)] * 5 + [(3, 4)] * 100)
-    weighted = statistically_validated_hypergraph(
-        [(1, 2), (3, 4)], weights=[5, 100]
-    )
+    weighted = statistically_validated_hypergraph([(1, 2), (3, 4)], weights=[5, 100])
     assert weighted.pvalues[frozenset({1, 2})] == pytest.approx(
         repeated.pvalues[frozenset({1, 2})]
     )
@@ -452,13 +455,17 @@ def test_svc_counts_subgroup_cooccurrence():
     assert result.counts[frozenset({1, 2})] == 2
 
 
-@pytest.mark.parametrize("func", [statistically_validated_hypergraph, statistically_validated_cores])
+@pytest.mark.parametrize(
+    "func", [statistically_validated_hypergraph, statistically_validated_cores]
+)
 def test_svh_svc_integer_multiplicity_required(func):
     with pytest.raises(ValueError):
         func([(1, 2), (3, 4)], weights=[1.5, 2])
 
 
-@pytest.mark.parametrize("func", [statistically_validated_hypergraph, statistically_validated_cores])
+@pytest.mark.parametrize(
+    "func", [statistically_validated_hypergraph, statistically_validated_cores]
+)
 def test_svh_svc_weights_length_checked(func):
     with pytest.raises(ValueError):
         func([(1, 2), (3, 4)], weights=[1])
@@ -472,3 +479,254 @@ def test_svh_svc_aliases():
     assert set(svc(edges).validated) == set(
         statistically_validated_cores(edges).validated
     )
+
+
+# ---------------------------------------------------------------------------
+# Regression tests (review fixes)
+# ---------------------------------------------------------------------------
+
+
+def test_child_codelength_matches_documented_equation():
+    # H(c|p) = log L + log min(|p|,|c|) + log C(|p|,|p∩c|) + log C(N-|p|,|c|-|p∩c|)
+    L, N, sp, sc, o = 3, 20, 6, 4, 2
+    expected = (
+        math.log2(L)
+        + math.log2(min(sp, sc))
+        + math.log2(math.comb(sp, o))
+        + math.log2(math.comb(N - sp, sc - o))
+    )
+    assert _child_codelength(sc, sp, o, L, N) == pytest.approx(expected)
+    assert _parent_codelength(sc, L, N) == pytest.approx(
+        math.log2(L) + math.log2(math.comb(N, sc))
+    )
+
+
+def test_log2_binom_out_of_range_is_minus_inf():
+    assert _log2_binom(3, 5) == float("-inf")
+    assert _log2_binom(3, -1) == float("-inf")
+    assert _log2_binom(-1, 0) == float("-inf")
+
+
+def test_weight_codelength_degenerate_means_and_bad_prior():
+    # mean weight 1 -> expected weight mu == 1 -> zero-cost weights.
+    assert _weight_codelength(1.0, 1, 0.5, 1.0, "poisson") == 0.0
+    assert _weight_codelength(1.0, 0, 0.5, 1.0, "geometric") == 0.0
+    with pytest.raises(ValueError, match="prior"):
+        _weight_codelength(2.0, 1, 0.5, 2.0, "uniform")
+
+
+def test_bh_threshold_empty():
+    assert _bh_threshold([], 0.05, 10) == 0.0
+
+
+def test_backbone_len_and_empty_hyperedges_skipped():
+    result = mdl_hypergraph_backbone([(1, 2, 3), (), (1, 2)], weights=[1, 5, 1])
+    assert len(result) == len(result.backbone)
+    assert result.n_input_hyperedges == 2
+
+
+MIXED = [(1, "a", 2), (1, "a"), ("b", 3), (("t", 1), 3)]
+
+
+def test_mixed_type_labels_supported():
+    # Regression: sorting mixed int/str/tuple labels raised TypeError.
+    maximal = maximal_hyperedges(MIXED)
+    assert set(maximal) == {
+        frozenset({1, "a", 2}),
+        frozenset({"b", 3}),
+        frozenset({("t", 1), 3}),
+    }
+    assert len(maximal[0]) == 3
+    comps = s_components([*MIXED, (4, "c")])
+    assert [len(c) for c in comps] == [2, 2, 1]
+    assert maximal_hyperedges(MIXED) == maximal_hyperedges(list(reversed(MIXED)))
+    assert [set(c) for c in s_components(MIXED)] == [
+        set(c) for c in s_components(list(reversed(MIXED)))
+    ]
+    result = mdl_hypergraph_backbone(MIXED)
+    assert frozenset({1, "a", 2}) in result.backbone
+    assert intersection_graph(MIXED).number_of_edges() == 2
+
+
+def test_homogeneous_but_incomparable_hyperedges():
+    # Each hyperedge is internally sortable, but ints vs strs across edges.
+    edges = [(1, 2), ("a", "b"), (3, 4)]
+    assert set(maximal_hyperedges(edges)) == {frozenset(e) for e in edges}
+    assert len(s_components(edges)) == 3
+
+
+def test_natural_order_kept_for_comparable_labels():
+    # Integer ties are still ordered numerically (not by repr: "10" < "9").
+    assert maximal_hyperedges([(10, 11), (9, 12)]) == [
+        frozenset({9, 12}),
+        frozenset({10, 11}),
+    ]
+    assert s_components([(10, 11), (9, 12)]) == [
+        [frozenset({9, 12})],
+        [frozenset({10, 11})],
+    ]
+
+
+@pytest.mark.parametrize("alpha", [0.0, -0.1, 1.5, 5])
+@pytest.mark.parametrize("func", [svh, svc])
+def test_svh_svc_alpha_validated(func, alpha):
+    with pytest.raises(ValueError, match="alpha"):
+        func([(1, 2)] * 3, alpha=alpha)
+
+
+def test_svh_svc_alpha_one_allowed():
+    assert svh([(1, 2)] * 3, alpha=1.0).alpha == 1.0
+    assert svc([(1, 2)] * 3, alpha=1.0).alpha == 1.0
+
+
+@pytest.mark.parametrize("bad", [0, 0.5, float("nan")])
+@pytest.mark.parametrize("func", [svh, svc])
+def test_svh_svc_invalid_multiplicities(func, bad):
+    with pytest.raises(ValueError, match="integer"):
+        func([(1, 2), (3, 4)], weights=[2, bad])
+
+
+def test_svh_svc_skip_empty_hyperedges():
+    a = svh([(1, 2), (), (1, 2)], weights=[2, 7, 3])
+    assert a.counts == {frozenset({1, 2}): 5}
+    assert a.n_instances == 5
+    assert len(svc([(), ()])) == 0
+    assert svc([]).n_instances == 0
+
+
+def test_svc_large_hyperedge_guard():
+    # Regression: a single 24-node hyperedge (~16.7M sub-groups) never finished.
+    big = [tuple(range(24))] + [(0, 1)] * 3
+    with pytest.raises(ValueError, match="max_order"):
+        svc(big)
+    bounded = svc(big, max_order=3)
+    assert max(len(g) for g in bounded.pvalues) == 3
+    assert len(bounded.pvalues) == math.comb(24, 3) + math.comb(24, 2)
+    with pytest.raises(ValueError, match="max_groups"):
+        svc(big, max_order=3, max_groups=100)
+
+
+def test_svc_max_groups_none_disables_guard():
+    edges = [tuple(range(6))] * 3 + [(7, 8)]
+    assert svc(edges, max_groups=None).pvalues == svc(edges).pvalues
+    with pytest.raises(ValueError):
+        svc(edges, max_groups=10)
+
+
+def test_svc_min_order_validated():
+    with pytest.raises(ValueError, match="min_order"):
+        svc([(1, 2, 3)], min_order=0)
+    assert all(len(g) >= 1 for g in svc([(1, 2, 3)], min_order=1).pvalues)
+
+
+def test_svc_order_with_all_groups_dropped():
+    # Once {1,2,3} is validated, every order-2 sub-group is dropped, so there is
+    # nothing left to test at order 2.
+    edges = [(1, 2, 3)] * 6 + [(i,) for i in range(10, 400)]
+    result = svc(edges, alpha=0.05)
+    assert result.validated == [frozenset({1, 2, 3})]
+    assert all(len(g) == 3 for g in result.pvalues)
+
+
+def test_svh_svc_vectorised_pvalues_match_scalar():
+    from scipy.stats import binom
+
+    rng = random.Random(3)
+    edges = [tuple(rng.sample(range(15), rng.randint(2, 4))) for _ in range(60)]
+    weights = [rng.randint(1, 5) for _ in edges]
+    result = svh(edges, weights=weights)
+    norm, mult = hg._normalize_multiplicities(edges, weights)
+    for order in {len(e) for e in norm}:
+        members = [(e, w) for e, w in zip(norm, mult) if len(e) == order]
+        n = sum(w for _, w in members)
+        degree = {}
+        for e, w in members:
+            for v in e:
+                degree[v] = degree.get(v, 0) + w
+        for e, w in members:
+            scalar = hg._svh_pvalue(w, n, [degree[v] for v in e], binom)
+            assert result.pvalues[e] == scalar
+
+
+def _reference_greedy_node(n_edges, neighbors, wterm):
+    """The original O(rounds * (m + P)) node greedy, kept as an oracle."""
+    in_backbone = [False] * n_edges
+    best_saving = [0.0] * n_edges
+    best_parent = [None] * n_edges
+
+    def _attach_children(parent):
+        for c, rmi in neighbors[parent]:
+            if in_backbone[c]:
+                continue
+            gain = rmi + wterm[c]
+            if gain > best_saving[c]:
+                best_saving[c] = gain
+                best_parent[c] = parent
+
+    while True:
+        chosen, best_gain = None, 1e-12
+        for e in range(n_edges):
+            if in_backbone[e]:
+                continue
+            gain = -best_saving[e]
+            for c, rmi in neighbors[e]:
+                if in_backbone[c]:
+                    continue
+                delta = (rmi + wterm[c]) - best_saving[c]
+                if delta > 0.0:
+                    gain += delta
+            if gain > best_gain:
+                best_gain, chosen = gain, e
+        if chosen is None:
+            break
+        in_backbone[chosen] = True
+        best_saving[chosen] = 0.0
+        best_parent[chosen] = None
+        _attach_children(chosen)
+
+    for e in range(n_edges):
+        if not in_backbone[e] and best_parent[e] is None:
+            in_backbone[e] = True
+            _attach_children(e)
+    return {e: best_parent[e] for e in range(n_edges) if not in_backbone[e]}
+
+
+def _random_hypergraph(seed):
+    rng = random.Random(seed)
+    n_nodes = rng.randint(4, 30)
+    m = rng.randint(2, 80)
+    edges = [
+        tuple(rng.sample(range(n_nodes), rng.randint(1, min(n_nodes, 6))))
+        for _ in range(m)
+    ]
+    weights = [rng.choice([1, 1, 2, 3, 10]) for _ in edges] if seed % 2 else None
+    gamma = rng.choice([1.0, 0.5, 0.1])
+    return edges, weights, gamma
+
+
+@pytest.mark.parametrize("method", ["node", "auto"])
+def test_fast_greedy_node_matches_reference(monkeypatch, method):
+    for seed in range(120):
+        edges, weights, gamma = _random_hypergraph(seed)
+        fast = mdl_hypergraph_backbone(
+            edges, weights=weights, gamma=gamma, method=method
+        )
+        with monkeypatch.context() as mp:
+            mp.setattr(hg, "_greedy_node", _reference_greedy_node)
+            ref = mdl_hypergraph_backbone(
+                edges, weights=weights, gamma=gamma, method=method
+            )
+        assert fast.backbone == ref.backbone, seed
+        assert fast.assignment == ref.assignment, seed
+        assert fast.description_length == ref.description_length, seed
+
+
+def test_greedy_node_scales():
+    # The previous implementation took ~8 s here; the lazy heap takes well under 1 s.
+    import time
+
+    rng = random.Random(0)
+    edges = [tuple(rng.sample(range(300), rng.randint(2, 6))) for _ in range(1500)]
+    start = time.perf_counter()
+    mdl_hypergraph_backbone(edges, method="node")
+    assert time.perf_counter() - start < 5.0

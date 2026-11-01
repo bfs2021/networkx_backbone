@@ -63,7 +63,9 @@ def _log2_binom(n, k):
     """log2 of the binomial coefficient C(n, k)."""
     if k < 0 or k > n or n < 0:
         return float("-inf")
-    return (math.lgamma(n + 1.0) - math.lgamma(k + 1.0) - math.lgamma(n - k + 1.0)) / _LN2
+    return (
+        math.lgamma(n + 1.0) - math.lgamma(k + 1.0) - math.lgamma(n - k + 1.0)
+    ) / _LN2
 
 
 def _parent_codelength(size, n_orders, n_nodes):
@@ -141,9 +143,9 @@ def _weight_term(weight, gamma, mean_weight, prior):
     demoting them to children (i.e. encourages keeping them in the backbone).
     Zero when ``gamma == 1`` or the hypergraph is effectively unweighted.
     """
-    return _weight_codelength(weight, 1, gamma, mean_weight, prior) - _weight_codelength(
-        weight, 0, gamma, mean_weight, prior
-    )
+    return _weight_codelength(
+        weight, 1, gamma, mean_weight, prior
+    ) - _weight_codelength(weight, 0, gamma, mean_weight, prior)
 
 
 # ---------------------------------------------------------------------------
@@ -181,6 +183,32 @@ def _normalize_hyperedges(hyperedges, weights):
             edges.append(fs)
             out_weights.append(w)
     return edges, out_weights
+
+
+def _sorted_labels(labels):
+    """Sort node labels deterministically, tolerating mixed / unorderable types.
+
+    Uses the labels' natural order when they are mutually comparable (so
+    integer labels sort numerically) and falls back to ``repr`` otherwise.
+    """
+    labels = list(labels)
+    try:
+        return sorted(labels)
+    except TypeError:
+        return sorted(labels, key=repr)
+
+
+def _sorted_by(items, key):
+    """``sorted(items, key=key)``, retrying on ``repr``-ed labels on TypeError.
+
+    *key* is called as ``key(item, sort_labels)`` where ``sort_labels`` is a
+    function returning a canonical sorted list of an iterable of node labels.
+    """
+    items = list(items)
+    try:
+        return sorted(items, key=lambda it: key(it, sorted))
+    except TypeError:
+        return sorted(items, key=lambda it: key(it, lambda xs: sorted(map(repr, xs))))
 
 
 # ---------------------------------------------------------------------------
@@ -321,6 +349,11 @@ def intersection_graph(hyperedges, s=1, weight="overlap"):
     ValueError
         If *s* is less than 1.
 
+    See Also
+    --------
+    s_components : Connected components of the s-line graph.
+    hypergraph_to_bipartite : Node--hyperedge incidence graph.
+
     Examples
     --------
     >>> from networkx_backbone import intersection_graph
@@ -400,7 +433,16 @@ def _greedy_node(n_edges, neighbors, wterm):
     the backbone the hyperedge whose promotion to a parent most increases the
     total parent--child savings (a facility-location-style greedy), then force any
     still-uncovered hyperedge to be a parent.  Returns ``parent_of``.
+
+    The marginal gain of promoting a hyperedge never increases as the backbone
+    grows (each child's best saving only rises, and backbone members drop out of
+    the sum), so the argmax is found with a *lazy* max-heap of stale gains
+    (CELF): only the top entry is re-evaluated each step.  Ties are broken by
+    the smallest hyperedge index, exactly as an exhaustive scan would, so the
+    result is identical to recomputing every gain each round.
     """
+    import heapq
+
     in_backbone = [False] * n_edges
     best_saving = [0.0] * n_edges
     best_parent = [None] * n_edges
@@ -414,26 +456,32 @@ def _greedy_node(n_edges, neighbors, wterm):
                 best_saving[c] = gain
                 best_parent[c] = parent
 
-    while True:
-        chosen, best_gain = None, 1e-12  # require a strictly positive improvement
-        for e in range(n_edges):
-            if in_backbone[e]:
+    def _gain(e):
+        gain = -best_saving[e]
+        for c, rmi in neighbors[e]:
+            if in_backbone[c]:
                 continue
-            gain = -best_saving[e]
-            for c, rmi in neighbors[e]:
-                if in_backbone[c]:
-                    continue
-                delta = (rmi + wterm[c]) - best_saving[c]
-                if delta > 0.0:
-                    gain += delta
-            if gain > best_gain:
-                best_gain, chosen = gain, e
-        if chosen is None:
-            break
-        in_backbone[chosen] = True
-        best_saving[chosen] = 0.0
-        best_parent[chosen] = None
-        _attach_children(chosen)
+            delta = (rmi + wterm[c]) - best_saving[c]
+            if delta > 0.0:
+                gain += delta
+        return gain
+
+    min_gain = 1e-12  # require a strictly positive improvement
+    heap = [(-_gain(e), e) for e in range(n_edges)]
+    heapq.heapify(heap)
+    while heap:
+        neg_stale, e = heap[0]
+        if -neg_stale <= min_gain:
+            break  # every true gain is bounded by its stale value
+        fresh = _gain(e)
+        if fresh != -neg_stale:
+            heapq.heapreplace(heap, (-fresh, e))
+            continue
+        heapq.heappop(heap)
+        in_backbone[e] = True
+        best_saving[e] = 0.0
+        best_parent[e] = None
+        _attach_children(e)
 
     # Force-cover any hyperedge still without a parent (no overlap with backbone).
     for e in range(n_edges):
@@ -445,7 +493,15 @@ def _greedy_node(n_edges, neighbors, wterm):
 
 
 def _description_length(
-    edges, parent_of, weight_list, n_nodes, n_orders, weighted, gamma, mean_weight, prior
+    edges,
+    parent_of,
+    weight_list,
+    n_nodes,
+    n_orders,
+    weighted,
+    gamma,
+    mean_weight,
+    prior,
 ):
     """Return ``(L(G, B), L(G, G))`` in bits for a given parent/child assignment."""
     dl = 0.0
@@ -524,6 +580,12 @@ def mdl_hypergraph_backbone(
         If *gamma* is not in ``(0, 1]``, *prior* is unknown, *weights* has the
         wrong length or contains a value ``< 1``, or *method* is unsupported.
 
+    See Also
+    --------
+    hypergraph_compression_ratio : Only the compression ratio ``eta``.
+    maximal_hyperedges : Purely set-inclusion (toplex) pruning.
+    statistically_validated_hypergraph : Statistical hyperedge filtering.
+
     Notes
     -----
     Exact minimisation is combinatorial; this uses the greedy heuristics of
@@ -552,9 +614,7 @@ def mdl_hypergraph_backbone(
     if prior not in ("poisson", "geometric"):
         raise ValueError(f"prior must be 'poisson' or 'geometric', got {prior!r}")
     if method not in ("edge", "node", "auto"):
-        raise ValueError(
-            f"method must be 'edge', 'node', or 'auto', got {method!r}"
-        )
+        raise ValueError(f"method must be 'edge', 'node', or 'auto', got {method!r}")
 
     edges, weight_list = _normalize_hyperedges(hyperedges, weights)
     n_edges = len(edges)
@@ -617,14 +677,28 @@ def mdl_hypergraph_backbone(
                 _greedy_node(n_edges, neighbors, wterm),
             ),
             key=lambda po: _description_length(
-                edges, po, weight_list, n_nodes, n_orders,
-                weighted, gamma, mean_weight, prior,
+                edges,
+                po,
+                weight_list,
+                n_nodes,
+                n_orders,
+                weighted,
+                gamma,
+                mean_weight,
+                prior,
             )[0],
         )
 
     dl, dl0 = _description_length(
-        edges, parent_of, weight_list, n_nodes, n_orders,
-        weighted, gamma, mean_weight, prior,
+        edges,
+        parent_of,
+        weight_list,
+        n_nodes,
+        n_orders,
+        weighted,
+        gamma,
+        mean_weight,
+        prior,
     )
 
     result.backbone = [edges[i] for i in range(n_edges) if i not in parent_of]
@@ -638,9 +712,7 @@ def mdl_hypergraph_backbone(
     return result
 
 
-def hypergraph_compression_ratio(
-    hyperedges, weights=None, gamma=1.0, prior="poisson"
-):
+def hypergraph_compression_ratio(hyperedges, weights=None, gamma=1.0, prior="poisson"):
     """Inverse compression ratio ``eta`` of the MDL backbone (Eq. (8)).
 
     A convenience wrapper returning only
@@ -664,6 +736,16 @@ def hypergraph_compression_ratio(
     -------
     eta : float
         Inverse compression ratio in ``[0, 1]``.
+
+    Raises
+    ------
+    ValueError
+        For invalid *weights*, *gamma*, or *prior* (see
+        :func:`mdl_hypergraph_backbone`).
+
+    See Also
+    --------
+    mdl_hypergraph_backbone : The full backbone and diagnostics.
 
     Examples
     --------
@@ -695,7 +777,15 @@ def maximal_hyperedges(hyperedges):
     Returns
     -------
     maximal : list of frozenset
-        The maximal hyperedges, ordered by decreasing size.
+        The maximal hyperedges, ordered by decreasing size (ties broken by
+        sorted node labels; labels of mixed, unorderable types are compared by
+        ``repr``).
+
+    See Also
+    --------
+    mdl_hypergraph_backbone : Information-theoretic pruning of nested *and*
+        overlapping redundancy.
+    order_filter : Keep hyperedges by size.
 
     Examples
     --------
@@ -704,7 +794,9 @@ def maximal_hyperedges(hyperedges):
     [[1, 2, 3], [4, 5]]
     """
     edges, _ = _normalize_hyperedges(hyperedges, None)
-    order = sorted(range(len(edges)), key=lambda i: (-len(edges[i]), sorted(edges[i])))
+    order = _sorted_by(
+        range(len(edges)), lambda i, srt: (-len(edges[i]), srt(edges[i]))
+    )
     kept = []
     for i in order:
         e = edges[i]
@@ -740,6 +832,11 @@ def order_filter(hyperedges, min_order=None, max_order=None, orders=None):
     ------
     ValueError
         If *min_order* and *max_order* are both given and ``min_order > max_order``.
+
+    See Also
+    --------
+    maximal_hyperedges : Structural (set-inclusion) pruning.
+    s_components : Group hyperedges by s-connectivity.
 
     Examples
     --------
@@ -785,7 +882,18 @@ def s_components(hyperedges, s=1):
     -------
     components : list of list of frozenset
         Each inner list is the hyperedges of one s-connected component,
-        ordered by decreasing component size.
+        ordered by decreasing component size (ties broken by sorted node
+        labels; labels of mixed, unorderable types are compared by ``repr``).
+
+    Raises
+    ------
+    ValueError
+        If *s* is less than 1.
+
+    See Also
+    --------
+    intersection_graph : The s-line graph whose components are returned.
+    maximal_hyperedges : Structural (set-inclusion) pruning.
 
     Examples
     --------
@@ -800,10 +908,10 @@ def s_components(hyperedges, s=1):
         [edges[i] for i in sorted(component)]
         for component in nx.connected_components(graph)
     ]
-    components.sort(
-        key=lambda comp: (-len(comp), sorted(sorted(e) for e in comp))
+    return _sorted_by(
+        components,
+        lambda comp, srt: (-len(comp), sorted(srt(e) for e in comp)),
     )
-    return components
 
 
 # ---------------------------------------------------------------------------
@@ -836,8 +944,7 @@ def _normalize_multiplicities(hyperedges, weights):
             w = weights[i]
             if not (w >= 1 and float(w).is_integer()):
                 raise ValueError(
-                    "statistical hypergraph filters require integer "
-                    "multiplicities >= 1"
+                    "statistical hypergraph filters require integer multiplicities >= 1"
                 )
             w = int(w)
         else:
@@ -877,6 +984,39 @@ def _svh_pvalue(observed, n_instances, degrees, binom):
     return float(binom.sf(observed - 1, n_instances, p))
 
 
+def _svh_pvalues(observed, n_instances, degree_lists, binom):
+    """Vectorised :func:`_svh_pvalue` over parallel lists of counts / degrees."""
+    import numpy as np
+
+    probs = []
+    for degrees in degree_lists:
+        p = 1.0
+        for d in degrees:
+            p *= d / n_instances
+        probs.append(p)
+    sf = binom.sf(np.asarray(observed) - 1, n_instances, np.asarray(probs))
+    return [float(v) for v in np.atleast_1d(sf)]
+
+
+def _check_alpha(alpha):
+    if not 0.0 < alpha <= 1.0:
+        raise ValueError(f"alpha must be in (0, 1], got {alpha}")
+
+
+def _count_subgroups(sizes, min_order, top, limit):
+    """Number of sub-groups of order ``min_order..top`` over hyperedge *sizes*.
+
+    Stops counting (returning a value ``> limit``) as soon as *limit* is passed.
+    """
+    total = 0
+    for size in sizes:
+        for k in range(min_order, min(top, size) + 1):
+            total += math.comb(size, k)
+        if total > limit:
+            return total
+    return total
+
+
 def statistically_validated_hypergraph(
     hyperedges, weights=None, max_order=None, alpha=0.01
 ):
@@ -908,12 +1048,23 @@ def statistically_validated_hypergraph(
     max_order : int or None, optional (default=None)
         Only test hyperedges up to this order (size).  ``None`` tests all orders.
     alpha : float, optional (default=0.01)
-        FDR significance level.
+        FDR significance level, in ``(0, 1]``.
 
     Returns
     -------
     result : ValidatedHypergraph
         The validated hyperedges plus per-hyperedge p-values and counts.
+
+    Raises
+    ------
+    ValueError
+        If *alpha* is not in ``(0, 1]``, or *weights* has the wrong length or
+        contains a value that is not an integer ``>= 1``.
+
+    See Also
+    --------
+    statistically_validated_cores : Validates sub-groups (cores) as well.
+    mdl_hypergraph_backbone : Parameter-free information-theoretic backbone.
 
     References
     ----------
@@ -931,6 +1082,7 @@ def statistically_validated_hypergraph(
     """
     from scipy.stats import binom
 
+    _check_alpha(alpha)
     edges, mult = _normalize_multiplicities(hyperedges, weights)
     result = ValidatedHypergraph(alpha=alpha, method="svh")
     if not edges:
@@ -957,11 +1109,12 @@ def statistically_validated_hypergraph(
             for node in e:
                 degree[node] = degree.get(node, 0) + w
 
-        groups = [e for e, _ in members]
-        pvals = [
-            _svh_pvalue(w, n_instances, [degree[n] for n in e], binom)
-            for e, w in members
-        ]
+        pvals = _svh_pvalues(
+            [w for _, w in members],
+            n_instances,
+            [[degree[n] for n in e] for e, _ in members],
+            binom,
+        )
         n_possible = math.comb(len(order_nodes), order)
         threshold = _bh_threshold(pvals, alpha, n_possible)
 
@@ -974,8 +1127,16 @@ def statistically_validated_hypergraph(
     return result
 
 
+_SVC_MAX_GROUPS = 1_000_000
+
+
 def statistically_validated_cores(
-    hyperedges, weights=None, min_order=2, max_order=None, alpha=0.01
+    hyperedges,
+    weights=None,
+    min_order=2,
+    max_order=None,
+    alpha=0.01,
+    max_groups=_SVC_MAX_GROUPS,
 ):
     """Extract the Statistically Validated Cores (SVC).
 
@@ -996,16 +1157,37 @@ def statistically_validated_cores(
     weights : iterable of int or None, optional (default=None)
         Per-hyperedge integer multiplicities.  ``None`` treats each as occurring once.
     min_order : int, optional (default=2)
-        Smallest group size to test.
+        Smallest group size to test (``>= 1``).
     max_order : int or None, optional (default=None)
         Largest group size to test.  ``None`` uses the largest hyperedge size.
+        Every sub-group of every hyperedge up to this size is enumerated -- up to
+        ``2**k`` per hyperedge of size ``k`` -- so set it when the hypergraph
+        contains large hyperedges.
     alpha : float, optional (default=0.01)
-        FDR significance level.
+        FDR significance level, in ``(0, 1]``.
+    max_groups : int or None, optional (default=1_000_000)
+        Safety guard: if the number of candidate sub-groups to enumerate (summed
+        over the distinct hyperedges, for orders ``min_order..max_order``)
+        exceeds this, a :class:`ValueError` is raised *before* any work is done
+        instead of running for an impractically long time.  ``None`` disables
+        the guard.
 
     Returns
     -------
     result : ValidatedHypergraph
         The validated cores plus per-group p-values and co-occurrence counts.
+
+    Raises
+    ------
+    ValueError
+        If *alpha* is not in ``(0, 1]``, *min_order* is less than 1, *weights*
+        is invalid, or the enumeration would exceed *max_groups* (lower
+        *max_order*, or raise / disable *max_groups*).
+
+    See Also
+    --------
+    statistically_validated_hypergraph : Validates only observed hyperedges.
+    maximal_hyperedges : Purely structural pruning of nested hyperedges.
 
     References
     ----------
@@ -1020,11 +1202,18 @@ def statistically_validated_cores(
     >>> result = statistically_validated_cores(edges)
     >>> result.method
     'svc'
+    >>> # A single 24-node hyperedge has ~16.7 million sub-groups: bound the order.
+    >>> big = [tuple(range(24)), (0, 1), (0, 1), (0, 1)]
+    >>> len(statistically_validated_cores(big, max_order=3).pvalues)
+    2300
     """
     from itertools import combinations
 
     from scipy.stats import binom
 
+    _check_alpha(alpha)
+    if min_order < 1:
+        raise ValueError(f"min_order must be >= 1, got {min_order}")
     edges, mult = _normalize_multiplicities(hyperedges, weights)
     result = ValidatedHypergraph(alpha=alpha, method="svc")
     if not edges:
@@ -1042,6 +1231,16 @@ def statistically_validated_cores(
 
     largest = max(len(e) for e in edges)
     top = largest if max_order is None else min(max_order, largest)
+    if max_groups is not None:
+        n_groups = _count_subgroups((len(e) for e in edges), min_order, top, max_groups)
+        if n_groups > max_groups:
+            raise ValueError(
+                f"statistically_validated_cores would enumerate more than "
+                f"{max_groups} candidate sub-groups (largest hyperedge has "
+                f"{largest} nodes, testing orders {min_order}..{top}); pass a "
+                "smaller max_order, or raise max_groups (None disables this "
+                "guard)"
+            )
 
     validated_groups = []
     for order in range(top, min_order - 1, -1):
@@ -1061,10 +1260,12 @@ def statistically_validated_cores(
             continue
 
         groups = list(counts)
-        pvals = [
-            _svh_pvalue(counts[g], n_instances, [degree[n] for n in g], binom)
-            for g in groups
-        ]
+        pvals = _svh_pvalues(
+            [counts[g] for g in groups],
+            n_instances,
+            [[degree[n] for n in g] for g in groups],
+            binom,
+        )
         n_possible = math.comb(len(all_nodes), order)
         threshold = _bh_threshold(pvals, alpha, n_possible)
 
