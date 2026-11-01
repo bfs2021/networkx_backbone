@@ -17,3 +17,7 @@ docs/_build/
 docs/auto_examples/
 docs/sg_execution_times.rst
 .DS_Store
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
