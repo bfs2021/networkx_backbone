@@ -123,11 +123,11 @@ WEIGHTED_METHOD_EDGE_COUNTS = [
         "h_backbone",
         lambda G: nb.h_backbone(G),
         lambda H: nb.boolean_filter(H, "h_backbone_keep"),
-        22,
+        18,
     ),
     (
         "modularity_backbone",
-        lambda G: nb.modularity_backbone(G),
+        lambda G: nb.modularity_backbone(G, seed=42),
         lambda H: nb.boolean_filter(H, "modularity_keep"),
         72,
     ),
@@ -228,19 +228,19 @@ UNWEIGHTED_METHOD_EDGE_COUNTS = [
         "sparsify",
         lambda G: nb.sparsify(G),
         lambda H: nb.boolean_filter(H, "sparsify_keep"),
-        136,
+        174,
     ),
     (
         "lspar",
         lambda G: nb.lspar(G),
         lambda H: nb.boolean_filter(H, "sparsify_keep"),
-        136,
+        174,
     ),
     (
         "local_degree",
         lambda G: nb.local_degree(G),
         lambda H: nb.boolean_filter(H, "sparsify_keep"),
-        135,
+        91,
     ),
 ]
 

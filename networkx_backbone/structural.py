@@ -39,6 +39,7 @@ maximum_spanning_tree_backbone
 
 import heapq
 import math
+import warnings
 
 import networkx as nx
 from networkx.utils import not_implemented_for
@@ -72,6 +73,63 @@ def _edge_key(G, u, v):
     return (u, v) if ku <= kv else (v, u)
 
 
+def _check_weights(G, weight, func_name, sign=None):
+    """Validate that every edge carries a numeric *weight*.
+
+    Parameters
+    ----------
+    sign : {None, "nonnegative", "positive"}
+        Additional constraint on the weight values.
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute, a non-numeric or NaN weight,
+        or a weight violating *sign*.
+    """
+    for u, v, data in G.edges(data=True):
+        if weight not in data:
+            raise nx.NetworkXError(
+                f"{func_name}: edge ({u!r}, {v!r}) has no {weight!r} attribute; "
+                f"every edge needs a numeric weight (set one, or pass the name "
+                f"of the weight attribute via `weight=`)"
+            )
+        w = data[weight]
+        try:
+            w = float(w)
+        except (TypeError, ValueError):
+            raise nx.NetworkXError(
+                f"{func_name}: edge ({u!r}, {v!r}) has non-numeric weight {w!r}"
+            ) from None
+        if math.isnan(w):
+            raise nx.NetworkXError(f"{func_name}: edge ({u!r}, {v!r}) has NaN weight")
+        if sign == "positive" and w <= 0:
+            raise nx.NetworkXError(
+                f"{func_name}: edge ({u!r}, {v!r}) has weight {w!r}; weights must "
+                f"be strictly positive (they are converted to distances 1/weight)"
+            )
+        if sign == "nonnegative" and w < 0:
+            raise nx.NetworkXError(
+                f"{func_name}: edge ({u!r}, {v!r}) has negative weight {w!r}"
+            )
+
+
+def _h_index(values):
+    """Largest integer h such that at least h of *values* are >= h."""
+    h = 0
+    for i, val in enumerate(sorted(values, reverse=True), start=1):
+        if _at_least(val, i):
+            h = i
+        else:
+            break
+    return h
+
+
+def _at_least(x, h):
+    """``x >= h`` with a relative tolerance for floating-point sums."""
+    return x >= h or math.isclose(x, h, rel_tol=1e-9)
+
+
 def _mark_kept_edges(H, keep_edges, attr):
     """Annotate every edge in H with a boolean keep flag."""
     for u, v, data in H.edges(data=True):
@@ -83,6 +141,7 @@ def _mark_kept_edges(H, keep_edges, attr):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def global_threshold_filter(G, threshold, weight="weight"):
     """Score edges against a global weight threshold.
 
@@ -105,6 +164,12 @@ def global_threshold_filter(G, threshold, weight="weight"):
         A copy of *G* with a boolean ``"global_threshold_keep"`` edge
         attribute.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
     Examples
     --------
     >>> import networkx as nx
@@ -126,6 +191,7 @@ def global_threshold_filter(G, threshold, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def strongest_n_ties(G, n=1, weight="weight"):
     """Score edges by strongest-*n* membership per node.
 
@@ -153,6 +219,15 @@ def strongest_n_ties(G, n=1, weight="weight"):
     ------
     ValueError
         If *n* < 1.
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Ties in weight are broken by neighbour iteration order, so exactly
+    *n* edges are selected per node (fewer if the node has fewer edges).
+    Edges without a *weight* attribute count as weight 0.
 
     Examples
     --------
@@ -168,16 +243,13 @@ def strongest_n_ties(G, n=1, weight="weight"):
         raise ValueError("n must be >= 1")
 
     kept_edges = set()
-    if G.is_directed():
-        for u in G.nodes():
-            out = [(data.get(weight, 0), v) for v, data in G[u].items()]
-            for _, v in heapq.nlargest(n, out):
-                kept_edges.add(_edge_key(G, u, v))
-    else:
-        for u in G.nodes():
-            nbrs = [(G[u][v].get(weight, 0), v) for v in G[u]]
-            for _, v in heapq.nlargest(n, nbrs):
-                kept_edges.add(_edge_key(G, u, v))
+    # G[u] holds the successors for directed graphs and the neighbours
+    # otherwise.  Sort on the weight only so that mixed-type node labels
+    # are never compared.
+    for u in G.nodes():
+        nbrs = [(data.get(weight, 0), v) for v, data in G[u].items()]
+        for _, v in heapq.nlargest(n, nbrs, key=lambda x: x[0]):
+            kept_edges.add(_edge_key(G, u, v))
 
     H = G.copy()
     _mark_kept_edges(H, kept_edges, "strongest_n_ties_keep")
@@ -189,10 +261,13 @@ def strongest_n_ties(G, n=1, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def global_sparsification(G, s=0.5, weight="weight"):
     """Score edges by global top-fraction membership.
 
-    This method ranks all edges by weight and keeps the top ``s`` fraction.
+    This method ranks all edges by *weight* and keeps the top ``s``
+    fraction (``ceil(s * m)`` edges, at least one).  It is a global
+    rank-based weight threshold.
 
     Parameters
     ----------
@@ -213,11 +288,34 @@ def global_sparsification(G, s=0.5, weight="weight"):
     ------
     ValueError
         If ``s`` is outside (0, 1].
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Satuluri et al. (2011) [1]_ use the same global top-fraction rule as a
+    baseline ("global sparsification"), but rank edges by the Jaccard
+    similarity of their endpoints rather than by weight.  To reproduce
+    that baseline, score the edges with
+    :func:`~networkx_backbone.jaccard_backbone` and pass
+    ``weight="jaccard"``.  Ties are broken by the string form of the
+    endpoints; edges without a *weight* attribute count as weight 0.
 
     References
     ----------
     .. [1] Satuluri, V., Parthasarathy, S., & Ruan, Y. (2011). Local graph
        sparsification for scalable clustering. *SIGMOD*, 721-732.
+
+    Examples
+    --------
+    >>> import networkx as nx
+    >>> from networkx_backbone import boolean_filter, global_sparsification
+    >>> G = nx.Graph()
+    >>> G.add_weighted_edges_from([(0, 1, 5.0), (1, 2, 1.0), (2, 3, 4.0), (3, 0, 2.0)])
+    >>> H = global_sparsification(G, s=0.5)
+    >>> sorted(boolean_filter(H, "global_sparsification_keep").edges())
+    [(0, 1), (2, 3)]
     """
     if not 0.0 < s <= 1.0:
         raise ValueError("s must be in (0, 1]")
@@ -243,10 +341,13 @@ def global_sparsification(G, s=0.5, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def primary_linkage_analysis(G, weight="weight"):
     """Score edges by primary-linkage membership.
 
-    Each node keeps only its strongest outgoing connection.
+    Each node keeps only its strongest outgoing connection (its strongest
+    incident edge for undirected graphs).  An edge is kept if it is the
+    primary link of at least one endpoint.
 
     Parameters
     ----------
@@ -261,11 +362,32 @@ def primary_linkage_analysis(G, weight="weight"):
         A copy of *G* with a boolean ``"primary_linkage_keep"`` edge
         attribute.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Ties are broken by the string form of the neighbour (largest wins);
+    edges without a *weight* attribute count as weight 0.
+
     References
     ----------
     .. [1] Nystuen, J. D., & Dacey, M. F. (1961). A graph theory
        interpretation of nodal regions. *Papers in Regional Science*,
        7(1), 29-42.
+
+    Examples
+    --------
+    >>> import networkx as nx
+    >>> from networkx_backbone import boolean_filter, primary_linkage_analysis
+    >>> G = nx.DiGraph()
+    >>> G.add_weighted_edges_from([("a", "b", 3), ("a", "c", 1), ("b", "c", 2), ("c", "a", 5)])
+    >>> H = primary_linkage_analysis(G)
+    >>> sorted(boolean_filter(H, "primary_linkage_keep").edges())
+    [('a', 'b'), ('b', 'c'), ('c', 'a')]
     """
     H = G.copy()
     kept_edges = set()
@@ -298,6 +420,7 @@ def primary_linkage_analysis(G, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def edge_betweenness_filter(G, s=0.5, weight="weight"):
     """Score edges by edge betweenness and top-fraction membership.
 
@@ -321,11 +444,28 @@ def edge_betweenness_filter(G, s=0.5, weight="weight"):
     ------
     ValueError
         If ``s`` is outside (0, 1].
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    If no edge has a *weight* attribute, hop-count shortest paths are
+    used.  Edges with non-positive weight get infinite distance.
 
     References
     ----------
     .. [1] Girvan, M., & Newman, M. E. J. (2002). Community structure in
        social and biological networks. *PNAS*, 99(12), 7821-7826.
+
+    Examples
+    --------
+    >>> import networkx as nx
+    >>> from networkx_backbone import boolean_filter, edge_betweenness_filter
+    >>> G = nx.barbell_graph(3, 0)  # two triangles joined by the bridge (2, 3)
+    >>> H = edge_betweenness_filter(G, s=0.1)
+    >>> sorted(boolean_filter(H, "edge_betweenness_keep").edges())
+    [(2, 3)]
     """
     if not 0.0 < s <= 1.0:
         raise ValueError("s must be in (0, 1]")
@@ -363,6 +503,7 @@ def edge_betweenness_filter(G, s=0.5, weight="weight"):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def node_degree_filter(G, min_degree=1):
     """Score nodes and edges by a minimum node-degree criterion.
 
@@ -383,11 +524,25 @@ def node_degree_filter(G, min_degree=1):
     ------
     ValueError
         If ``min_degree`` is negative.
+    NetworkXNotImplemented
+        If *G* is a multigraph.  Collapse parallel edges first with
+        :func:`~networkx_backbone.multigraph_to_weighted`.
 
     References
     ----------
     .. [1] Freeman, L. C. (1978). Centrality in social networks:
        conceptual clarification. *Social Networks*, 1(3), 215-239.
+
+    Examples
+    --------
+    >>> import networkx as nx
+    >>> from networkx_backbone import boolean_filter, node_degree_filter
+    >>> G = nx.path_graph(4)
+    >>> H = node_degree_filter(G, min_degree=2)
+    >>> [n for n, keep in H.nodes(data="node_degree_keep") if keep]
+    [1, 2]
+    >>> sorted(boolean_filter(H, "node_degree_keep").edges())
+    [(1, 2)]
     """
     if min_degree < 0:
         raise ValueError("min_degree must be >= 0")
@@ -406,18 +561,19 @@ def node_degree_filter(G, min_degree=1):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def high_salience_skeleton(G, weight="weight"):
     """Compute edge salience from shortest-path tree participation.
 
     For every node *r*, a shortest-path tree rooted at *r* is computed
     (using inverse weights as distances).  The salience of an edge is the
-    fraction of these trees that contain it.  The salience is stored as
-    the ``"salience"`` edge attribute on the returned graph.
+    fraction of these trees that contain it [1]_.  The salience is stored
+    as the ``"salience"`` edge attribute on the returned graph.
 
     Parameters
     ----------
     G : graph
-        A NetworkX graph.  All weights must be positive.
+        An undirected NetworkX graph.  All weights must be positive.
     weight : string, optional (default="weight")
         Edge attribute key used as the weight.
 
@@ -426,6 +582,27 @@ def high_salience_skeleton(G, weight="weight"):
     H : graph
         A copy of *G* with an additional ``"salience"`` edge attribute
         whose value lies in [0, 1].
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a non-positive weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Grady et al. use one shortest-path tree per root.  When a node *x* is
+    reached from the root by several equally short paths through *k*
+    different predecessors, the tree is not unique; here each of those
+    *k* tree edges receives credit ``1/k`` for that root.  This equals
+    the expected salience when every node picks one of its shortest-path
+    predecessors uniformly at random, and it does not depend on node
+    order.  Consequently every root contributes exactly one unit of
+    credit per node it reaches, and for a connected graph on *n* nodes the
+    saliences sum to ``n - 1``.  Exact ties are detected with
+    floating-point equality of path lengths.
 
     References
     ----------
@@ -443,26 +620,25 @@ def high_salience_skeleton(G, weight="weight"):
     >>> backbone.number_of_edges() <= H.number_of_edges()
     True
     """
+    _check_weights(G, weight, "high_salience_skeleton", sign="positive")
     H = G.copy()
     n = G.number_of_nodes()
-    salience_count = {(min(u, v), max(u, v)): 0 for u, v in G.edges()}
+    credit = {_edge_key(G, u, v): 0.0 for u, v in G.edges()}
 
-    dist_attr = "__hss_dist__"
-    for u, v, data in H.edges(data=True):
-        data[dist_attr] = 1.0 / data[weight]
+    def distance(u, v, data):
+        return 1.0 / data[weight]
 
     for root in G.nodes():
-        pred = nx.dijkstra_predecessor_and_distance(H, root, weight=dist_attr)[0]
+        pred, _ = nx.dijkstra_predecessor_and_distance(G, root, weight=distance)
         for node, preds in pred.items():
+            if not preds:
+                continue
+            share = 1.0 / len(preds)
             for p in preds:
-                key = (min(node, p), max(node, p))
-                if key in salience_count:
-                    salience_count[key] += 1
+                credit[_edge_key(G, node, p)] += share
 
     for u, v, data in H.edges(data=True):
-        key = (min(u, v), max(u, v))
-        data["salience"] = salience_count[key] / n
-        data.pop(dist_attr, None)
+        data["salience"] = credit[_edge_key(G, u, v)] / n
 
     return H
 
@@ -473,6 +649,7 @@ def high_salience_skeleton(G, weight="weight"):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def metric_backbone(G, weight="weight"):
     """Extract the metric backbone using sum-of-distances shortest paths.
 
@@ -483,7 +660,7 @@ def metric_backbone(G, weight="weight"):
     Parameters
     ----------
     G : graph
-        A NetworkX graph.
+        An undirected NetworkX graph.
     weight : string, optional (default="weight")
         Edge attribute key used as the weight.  All weights must be
         positive.
@@ -492,6 +669,20 @@ def metric_backbone(G, weight="weight"):
     -------
     H : graph
         A copy of *G* with boolean ``"metric_keep"`` on each edge.
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a non-positive weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Distances are compared with a relative tolerance of ``1e-9`` so that
+    an edge tied with an alternative path is kept regardless of rounding.
+    Self-loops are never on a shortest path and are never kept.
 
     References
     ----------
@@ -512,6 +703,7 @@ def metric_backbone(G, weight="weight"):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def ultrametric_backbone(G, weight="weight"):
     """Extract the ultrametric backbone using max-distance (minimax) paths.
 
@@ -523,7 +715,7 @@ def ultrametric_backbone(G, weight="weight"):
     Parameters
     ----------
     G : graph
-        A NetworkX graph.
+        An undirected NetworkX graph.
     weight : string, optional (default="weight")
         Edge attribute key used as the weight.  All weights must be
         positive.
@@ -532,6 +724,20 @@ def ultrametric_backbone(G, weight="weight"):
     -------
     H : graph
         A copy of *G* with boolean ``"ultrametric_keep"`` on each edge.
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a non-positive weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Minimax distances are read off a minimum spanning forest of the
+    distance graph and compared with a relative tolerance of ``1e-9``.
+    Self-loops are never kept.
 
     References
     ----------
@@ -553,28 +759,38 @@ def ultrametric_backbone(G, weight="weight"):
 
 def _distance_backbone(G, weight="weight", ultrametric=False):
     """Shared helper for metric and ultrametric backbones."""
+    func_name = "ultrametric_backbone" if ultrametric else "metric_backbone"
+    _check_weights(G, weight, func_name, sign="positive")
     H = G.copy()
 
     dist_G = nx.Graph()
+    dist_G.add_nodes_from(G)
     for u, v, data in G.edges(data=True):
-        dist_G.add_edge(u, v, dist=1.0 / data[weight])
+        if u != v:
+            dist_G.add_edge(u, v, dist=1.0 / data[weight])
 
     keep_edges = set()
     if ultrametric:
         mst = nx.minimum_spanning_tree(dist_G, weight="dist")
         for u, v, data in G.edges(data=True):
+            if u == v:
+                continue
             direct_dist = 1.0 / data[weight]
             path = nx.shortest_path(mst, u, v, weight=None)
             max_edge = max(
                 dist_G[path[i]][path[i + 1]]["dist"] for i in range(len(path) - 1)
             )
-            if abs(direct_dist - max_edge) < 1e-12 or direct_dist <= max_edge:
+            if direct_dist <= max_edge or math.isclose(
+                direct_dist, max_edge, rel_tol=1e-9
+            ):
                 keep_edges.add(_edge_key(G, u, v))
     else:
         sp = dict(nx.all_pairs_dijkstra_path_length(dist_G, weight="dist"))
         for u, v, data in G.edges(data=True):
+            if u == v:
+                continue
             direct_dist = 1.0 / data[weight]
-            if abs(direct_dist - sp[u][v]) < 1e-12:
+            if math.isclose(direct_dist, sp[u][v], rel_tol=1e-9):
                 keep_edges.add(_edge_key(G, u, v))
 
     keep_attr = "ultrametric_keep" if ultrametric else "metric_keep"
@@ -588,6 +804,7 @@ def _distance_backbone(G, weight="weight", ultrametric=False):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
     """Compute the doubly-stochastic backbone via Sinkhorn-Knopp normalization.
 
@@ -598,19 +815,43 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
     Parameters
     ----------
     G : graph
-        A NetworkX graph.
+        An undirected NetworkX graph.
     weight : string, optional (default="weight")
-        Edge attribute key used as the weight.
+        Edge attribute key used as the weight.  Weights must be
+        non-negative.
     max_iter : int, optional (default=1000)
         Maximum number of Sinkhorn-Knopp iterations.
     tol : float, optional (default=1e-8)
-        Convergence tolerance.
+        Convergence tolerance on the row and column sums.
 
     Returns
     -------
     H : graph
         A copy of *G* with an additional ``"ds_weight"`` edge attribute
         (doubly-stochastic normalised weight).
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a negative weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Warns
+    -----
+    RuntimeWarning
+        If the iteration does not converge within *max_iter* steps.  This
+        happens when the weighted adjacency matrix cannot be scaled to a
+        doubly stochastic matrix (it lacks *total support*), for example
+        for trees such as a path on three nodes or any graph in which two
+        leaves hang off the same node, or when convergence is too slow
+        (common for sparse real networks with low-degree nodes).  ``"ds_weight"`` then
+        holds the last iterate, which is not doubly stochastic.
+
+    Notes
+    -----
+    Isolated nodes (all-zero rows) are ignored when checking convergence.
 
     References
     ----------
@@ -622,15 +863,21 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
     --------
     >>> import networkx as nx
     >>> from networkx_backbone import doubly_stochastic_filter, threshold_filter
-    >>> G = nx.les_miserables_graph()
+    >>> G = nx.complete_graph(4)
+    >>> weights = dict(zip(G.edges(), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]))
+    >>> nx.set_edge_attributes(G, weights, "weight")
     >>> H = doubly_stochastic_filter(G)
-    >>> backbone = threshold_filter(H, "ds_weight", 0.1, mode="above")
-    >>> backbone.number_of_edges() <= H.number_of_edges()
-    True
+    >>> row_sum = sum(d["ds_weight"] for _, _, d in H.edges(0, data=True))
+    >>> round(row_sum, 6)
+    1.0
+    >>> backbone = threshold_filter(H, "ds_weight", 0.36, mode="above")
+    >>> sorted(backbone.edges())
+    [(0, 3), (1, 2)]
     """
     import numpy as np
 
-    nodes = sorted(G.nodes())
+    _check_weights(G, weight, "doubly_stochastic_filter", sign="nonnegative")
+    nodes = list(G)
     n = len(nodes)
     if n == 0:
         return G.copy()
@@ -640,12 +887,15 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
     # Build adjacency matrix
     A = np.zeros((n, n), dtype=float)
     for u, v, data in G.edges(data=True):
-        w = data.get(weight, 0)
+        w = float(data[weight])
         A[idx[u], idx[v]] = w
         A[idx[v], idx[u]] = w
 
+    active = A.sum(axis=1) > 0  # symmetric: same for rows and columns
+
     # Sinkhorn-Knopp iteration
     D = A.copy()
+    converged = False
     for _ in range(max_iter):
         # Row normalise
         row_sums = D.sum(axis=1, keepdims=True)
@@ -655,11 +905,23 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
         col_sums = D.sum(axis=0, keepdims=True)
         col_sums[col_sums == 0] = 1.0
         D = D / col_sums
-        # Check convergence
-        rs = D.sum(axis=1)
-        cs = D.sum(axis=0)
-        if np.allclose(rs, 1, atol=tol) and np.allclose(cs, 1, atol=tol):
+        # Check convergence on the non-empty rows/columns
+        rs = D.sum(axis=1)[active]
+        cs = D.sum(axis=0)[active]
+        if np.allclose(rs, 1, rtol=0, atol=tol) and np.allclose(cs, 1, rtol=0, atol=tol):
+            converged = True
             break
+
+    if not converged:
+        warnings.warn(
+            "doubly_stochastic_filter: Sinkhorn-Knopp normalization did not "
+            f"converge within max_iter={max_iter} iterations; the weighted "
+            "adjacency matrix probably cannot be scaled to a doubly stochastic "
+            "matrix (e.g. trees, or several leaves attached to one node). "
+            "'ds_weight' holds the last, non-doubly-stochastic iterate.",
+            RuntimeWarning,
+            stacklevel=3,  # skip the not_implemented_for argmap wrapper
+        )
 
     H = G.copy()
     for u, v, data in H.edges(data=True):
@@ -674,29 +936,52 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def h_backbone(G, weight="weight"):
     r"""Extract the h-backbone of a weighted graph.
 
-    The h-backbone [1]_ is composed of two parts:
+    Following Zhang et al. (2018) [1]_, the h-backbone is the union of
 
-    1. **h-strength network**: find *h* such that there are at least *h*
-       edges with weight >= *h*.  Keep those edges.
-    2. **h-bridge network**: among the remaining edges, keep those whose
-       edge betweenness centrality is in the top-*h*.
-
-    The union of both subsets forms the h-backbone.
+    1. the **h-strength network**: the edges whose weight is at least the
+       *h-strength* :math:`h_s`, the largest integer such that at least
+       :math:`h_s` edges have weight :math:`\ge h_s`; and
+    2. the **h-bridge network**: the edges whose *bridge*
+       :math:`b(e) = eb(e) / N` is at least the *h-bridge* :math:`h_b`, the
+       largest integer such that at least :math:`h_b` edges have
+       :math:`b(e) \ge h_b`.  Here :math:`eb(e)` is the (unnormalised)
+       edge betweenness of *e* counted over ordered node pairs and *N* is
+       the number of nodes.
 
     Parameters
     ----------
     G : graph
-        A NetworkX graph.
+        An undirected NetworkX graph.
     weight : string, optional (default="weight")
         Edge attribute key used as the weight.
 
     Returns
     -------
     H : graph
-        A copy of *G* with boolean ``"h_backbone_keep"`` on each edge.
+        A copy of *G* with the float ``"h_bridge"`` (the bridge value
+        :math:`b(e)`) and boolean ``"h_backbone_keep"`` on each edge.
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a non-numeric weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    As in [1]_, edge betweenness is computed on the whole (unweighted)
+    network topology: the h-bridge captures structural importance while
+    the weights enter only through the h-strength.  If every weight is
+    below 1 then :math:`h_s = 0` and the h-strength network is empty (it
+    would otherwise contain every edge); likewise an h-bridge of 0
+    contributes no edges.  Bridge values are compared with a relative
+    tolerance of ``1e-9``.
 
     References
     ----------
@@ -714,38 +999,28 @@ def h_backbone(G, weight="weight"):
     >>> backbone.number_of_edges() <= H.number_of_edges()
     True
     """
-    # Compute h-index of the weight sequence
-    weights = sorted([data[weight] for _, _, data in G.edges(data=True)], reverse=True)
-    h = 0
-    for i, w in enumerate(weights):
-        if w >= i + 1:
-            h = i + 1
-        else:
-            break
-
-    # h-strength network: edges with weight >= h
-    h_strength_edges = set()
-    for u, v, data in G.edges(data=True):
-        if data[weight] >= h:
-            h_strength_edges.add(_edge_key(G, u, v))
-
-    # h-bridge network: top-h edges by betweenness among NON-h-strength edges
-    remaining = G.copy()
-    for u, v in list(h_strength_edges):
-        if remaining.has_edge(u, v):
-            remaining.remove_edge(u, v)
-
-    h_bridge_edges = set()
-    if remaining.number_of_edges() > 0 and h > 0:
-        eb = nx.edge_betweenness_centrality(remaining, weight=weight)
-        top_h = sorted(eb.items(), key=lambda x: x[1], reverse=True)[:h]
-        for (u, v), _ in top_h:
-            h_bridge_edges.add(_edge_key(G, u, v))
-
-    # Union
-    backbone_edges = h_strength_edges | h_bridge_edges
+    _check_weights(G, weight, "h_backbone")
     H = G.copy()
-    _mark_kept_edges(H, backbone_edges, "h_backbone_keep")
+    n = G.number_of_nodes()
+
+    # h-strength
+    h_s = _h_index(float(d[weight]) for _, _, d in G.edges(data=True))
+
+    # h-bridge: b(e) = eb(e) / N with eb over ordered pairs (NetworkX counts
+    # unordered pairs for undirected graphs, hence the factor 2).
+    eb = nx.edge_betweenness_centrality(G, normalized=False, weight=None)
+    bridge = {}
+    for u, v in G.edges():
+        val = eb.get((u, v), eb.get((v, u), 0.0))
+        bridge[_edge_key(G, u, v)] = 2.0 * val / n
+    h_b = _h_index(bridge.values())
+
+    for u, v, data in H.edges(data=True):
+        b = bridge[_edge_key(G, u, v)]
+        data["h_bridge"] = b
+        in_strength = h_s >= 1 and float(data[weight]) >= h_s
+        in_bridge = h_b >= 1 and _at_least(b, h_b)
+        data["h_backbone_keep"] = in_strength or in_bridge
     return H
 
 
@@ -755,7 +1030,8 @@ def h_backbone(G, weight="weight"):
 
 
 @not_implemented_for("directed")
-def modularity_backbone(G, weight="weight"):
+@not_implemented_for("multigraph")
+def modularity_backbone(G, weight="weight", seed=None):
     """Compute the modularity vitality index for each node.
 
     The vitality index [1]_ measures the change in modularity when a
@@ -769,12 +1045,29 @@ def modularity_backbone(G, weight="weight"):
         A NetworkX graph.
     weight : string, optional (default="weight")
         Edge attribute key used as the weight.
+    seed : integer, random_state, or None (default)
+        Indicator of random number generation state, passed unchanged to
+        every :func:`networkx.community.louvain_communities` call.  With an
+        integer seed each call is seeded identically, so results are
+        reproducible.  See :ref:`Randomness<randomness>`.
 
     Returns
     -------
     H : graph
         A copy of *G* with ``"vitality"`` node scores and boolean
         ``"modularity_keep"`` on edges.
+
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
+
+    Notes
+    -----
+    Louvain is randomised, so with ``seed=None`` the vitalities (and the
+    retained edges) can change between calls.  A graph (or node-deleted
+    subgraph) with zero total edge weight has modularity 0.
 
     References
     ----------
@@ -787,36 +1080,27 @@ def modularity_backbone(G, weight="weight"):
     >>> import networkx as nx
     >>> from networkx_backbone import boolean_filter, modularity_backbone
     >>> G = nx.les_miserables_graph()
-    >>> H = modularity_backbone(G)
+    >>> H = modularity_backbone(G, seed=42)
     >>> backbone = boolean_filter(H, "modularity_keep")
     >>> backbone.number_of_edges() <= H.number_of_edges()
     True
     """
     H = G.copy()
 
-    # Baseline modularity
-    try:
-        communities_full = nx.community.louvain_communities(G, weight=weight, seed=42)
-    except Exception:
-        communities_full = [set(G.nodes())]
-    mod_full = nx.community.modularity(G, communities_full, weight=weight)
+    def louvain_modularity(graph):
+        if graph.size(weight=weight) == 0:
+            return 0.0
+        communities = nx.community.louvain_communities(
+            graph, weight=weight, seed=seed
+        )
+        return nx.community.modularity(graph, communities, weight=weight)
+
+    mod_full = louvain_modularity(G)
 
     for node in G.nodes():
         G_reduced = G.copy()
         G_reduced.remove_node(node)
-        if G_reduced.number_of_nodes() == 0:
-            H.nodes[node]["vitality"] = 0.0
-            continue
-        try:
-            communities_reduced = nx.community.louvain_communities(
-                G_reduced, weight=weight, seed=42
-            )
-        except Exception:
-            communities_reduced = [set(G_reduced.nodes())]
-        mod_reduced = nx.community.modularity(
-            G_reduced, communities_reduced, weight=weight
-        )
-        H.nodes[node]["vitality"] = mod_full - mod_reduced
+        H.nodes[node]["vitality"] = mod_full - louvain_modularity(G_reduced)
 
     for u, v, data in H.edges(data=True):
         data["modularity_keep"] = (
@@ -833,6 +1117,7 @@ def modularity_backbone(G, weight="weight"):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def planar_maximally_filtered_graph(G, weight="weight"):
     """Construct the Planar Maximally Filtered Graph (PMFG).
 
@@ -842,14 +1127,23 @@ def planar_maximally_filtered_graph(G, weight="weight"):
     Parameters
     ----------
     G : graph
-        A NetworkX graph.
+        An undirected NetworkX graph.
     weight : string, optional (default="weight")
-        Edge attribute key used as the weight.
+        Edge attribute key used as the weight (may be negative, e.g.
+        correlations).
 
     Returns
     -------
     H : graph
         A copy of *G* with boolean ``"pmfg_keep"`` on edges.
+
+    Raises
+    ------
+    NetworkXError
+        If an edge has no *weight* attribute or a non-numeric weight.
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
 
     References
     ----------
@@ -867,11 +1161,12 @@ def planar_maximally_filtered_graph(G, weight="weight"):
     >>> backbone.number_of_edges() <= H.number_of_edges()
     True
     """
+    _check_weights(G, weight, "planar_maximally_filtered_graph")
     n = G.number_of_nodes()
     max_edges = 3 * (n - 2) if n >= 3 else n - 1
 
     # Sort edges by weight descending
-    edges = sorted(G.edges(data=True), key=lambda e: e[2].get(weight, 0), reverse=True)
+    edges = sorted(G.edges(data=True), key=lambda e: float(e[2][weight]), reverse=True)
 
     candidate = G.__class__()
     candidate.add_nodes_from(G.nodes(data=True))
@@ -896,6 +1191,7 @@ def planar_maximally_filtered_graph(G, weight="weight"):
 
 
 @not_implemented_for("directed")
+@not_implemented_for("multigraph")
 def maximum_spanning_tree_backbone(G, weight="weight"):
     """Extract the maximum spanning tree as a backbone.
 
@@ -910,6 +1206,12 @@ def maximum_spanning_tree_backbone(G, weight="weight"):
     -------
     H : graph
         A copy of *G* with boolean ``"mst_keep"`` on edges.
+
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is directed or a multigraph.  Collapse parallel edges first
+        with :func:`~networkx_backbone.multigraph_to_weighted`.
 
     Examples
     --------
@@ -977,9 +1279,9 @@ _COMPLEXITY = {
         "notes": "I=max_iter for Sinkhorn-Knopp normalization.",
     },
     "h_backbone": {
-        "time": "O(nm + n^2 log n + m log m)",
+        "time": "O(nm + m log m)",
         "space": "O(n + m)",
-        "notes": "Dominated by edge-betweenness on residual graph.",
+        "notes": "Dominated by unweighted edge betweenness (Brandes).",
     },
     "modularity_backbone": {
         "time": "O(nm)",

@@ -7,6 +7,13 @@ structurally embedded edges (high proximity) versus bridge edges
 (low proximity) and can feed into any of the filtering utilities
 in :mod:`networkx_backbone.filters`.
 
+All local methods use the same conventions: the neighbourhood
+:math:`N(u)` of a node excludes the node itself (self-loops are ignored,
+so an endpoint is never counted as a common neighbour of an edge), and
+:math:`k_u = |N(u)|`.  For directed graphs neighbourhoods are successor
+sets and :math:`k_u` is the out-degree.  Multigraphs are not supported;
+collapse them first with :func:`~networkx_backbone.multigraph_to_weighted`.
+
 Local methods
 -------------
 neighborhood_overlap
@@ -49,6 +56,7 @@ for social networks." *JASIST*, 58(7), 1019-1031.
 import math
 
 import networkx as nx
+from networkx.utils import not_implemented_for
 
 from networkx_backbone._docstrings import append_complexity_docstrings
 
@@ -74,8 +82,17 @@ __all__ = [
 
 
 def _neighbor_sets(G):
-    """Return a dict mapping each node to its set of neighbors."""
-    return {v: set(G.neighbors(v)) for v in G}
+    """Return ``{node: neighbours}``, excluding the node itself.
+
+    For directed graphs the neighbours are the successors.  Excluding the
+    node itself means self-loops never create a common neighbour.
+    """
+    return {v: set(G[v]) - {v} for v in G}
+
+
+def _degrees(nbrs):
+    """Degree (out-degree for directed graphs) consistent with *nbrs*."""
+    return {v: len(s) for v, s in nbrs.items()}
 
 
 # =====================================================================
@@ -83,6 +100,7 @@ def _neighbor_sets(G):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def neighborhood_overlap(G):
     """Score each edge by the raw neighborhood overlap of its endpoints.
 
@@ -94,12 +112,17 @@ def neighborhood_overlap(G):
     ----------
     G : networkx.Graph or networkx.DiGraph
         Input graph. For directed graphs, neighborhoods are defined by
-        successors (out-neighbors).
+        successors (out-neighbors); see the module notes.
 
     Returns
     -------
     H : graph
         Copy of *G* with the ``"overlap"`` edge attribute added.
+
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
 
     Examples
     --------
@@ -118,6 +141,7 @@ def neighborhood_overlap(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def jaccard_backbone(G):
     r"""Score each edge by the Jaccard similarity of its endpoint neighborhoods.
 
@@ -138,6 +162,11 @@ def jaccard_backbone(G):
     -------
     H : graph
         Copy of *G* with the ``"jaccard"`` edge attribute added.
+
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
 
     References
     ----------
@@ -166,6 +195,7 @@ def jaccard_backbone(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def dice_backbone(G):
     r"""Score each edge by the Dice similarity of its endpoint neighborhoods.
 
@@ -187,6 +217,11 @@ def dice_backbone(G):
     H : graph
         Copy of *G* with the ``"dice"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Dice, L. R. (1945). Measures of the amount of ecologic
@@ -204,7 +239,7 @@ def dice_backbone(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         intersection = len(nbrs[u] & nbrs[v])
         denom = deg[u] + deg[v]
@@ -212,6 +247,7 @@ def dice_backbone(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def cosine_backbone(G):
     r"""Score each edge by the cosine similarity of its endpoint neighborhoods.
 
@@ -233,6 +269,11 @@ def cosine_backbone(G):
     H : graph
         Copy of *G* with the ``"cosine"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Salton, G. & McGill, M. J. (1983). *Introduction to Modern
@@ -250,7 +291,7 @@ def cosine_backbone(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         intersection = len(nbrs[u] & nbrs[v])
         denom = math.sqrt(deg[u] * deg[v])
@@ -258,6 +299,7 @@ def cosine_backbone(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def hub_promoted_index(G):
     r"""Score each edge by the Hub Promoted Index of its endpoint neighborhoods.
 
@@ -279,6 +321,11 @@ def hub_promoted_index(G):
     H : graph
         Copy of *G* with the ``"hpi"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Ravasz, E., Somera, A. L., Mongru, D. A., Oltvai, Z. N. &
@@ -297,7 +344,7 @@ def hub_promoted_index(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         intersection = len(nbrs[u] & nbrs[v])
         denom = min(deg[u], deg[v])
@@ -305,6 +352,7 @@ def hub_promoted_index(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def hub_depressed_index(G):
     r"""Score each edge by the Hub Depressed Index of its endpoint neighborhoods.
 
@@ -326,6 +374,11 @@ def hub_depressed_index(G):
     H : graph
         Copy of *G* with the ``"hdi"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Ravasz, E., Somera, A. L., Mongru, D. A., Oltvai, Z. N. &
@@ -344,7 +397,7 @@ def hub_depressed_index(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         intersection = len(nbrs[u] & nbrs[v])
         denom = max(deg[u], deg[v])
@@ -352,6 +405,7 @@ def hub_depressed_index(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def lhn_local_index(G):
     r"""Score each edge by the Leicht-Holme-Newman local similarity index.
 
@@ -373,6 +427,11 @@ def lhn_local_index(G):
     H : graph
         Copy of *G* with the ``"lhn_local"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Leicht, E. A., Holme, P. & Newman, M. E. J. (2006). Vertex
@@ -390,7 +449,7 @@ def lhn_local_index(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         intersection = len(nbrs[u] & nbrs[v])
         denom = deg[u] * deg[v]
@@ -398,6 +457,7 @@ def lhn_local_index(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def preferential_attachment_score(G):
     r"""Score each edge by the preferential attachment index.
 
@@ -419,6 +479,11 @@ def preferential_attachment_score(G):
     H : graph
         Copy of *G* with the ``"pa"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Barabasi, A.-L. & Albert, R. (1999). Emergence of scaling in
@@ -435,12 +500,13 @@ def preferential_attachment_score(G):
     True
     """
     H = G.copy()
-    deg = dict(G.degree())
+    deg = _degrees(_neighbor_sets(G))
     for u, v in H.edges():
         H[u][v]["pa"] = deg[u] * deg[v]
     return H
 
 
+@not_implemented_for("multigraph")
 def adamic_adar_index(G):
     r"""Score each edge by the Adamic-Adar index.
 
@@ -463,6 +529,11 @@ def adamic_adar_index(G):
     H : graph
         Copy of *G* with the ``"adamic_adar"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Adamic, L. A. & Adar, E. (2003). Friends and neighbors on the
@@ -480,7 +551,7 @@ def adamic_adar_index(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         common = nbrs[u] & nbrs[v]
         score = sum(1.0 / math.log(deg[z]) for z in common if deg[z] > 1)
@@ -488,6 +559,7 @@ def adamic_adar_index(G):
     return H
 
 
+@not_implemented_for("multigraph")
 def resource_allocation_index(G):
     r"""Score each edge by the resource-allocation index.
 
@@ -511,6 +583,11 @@ def resource_allocation_index(G):
         Copy of *G* with the ``"resource_allocation"`` edge attribute
         added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Zhou, T., Lu, L. & Zhang, Y.-C. (2009). Predicting missing links
@@ -529,7 +606,7 @@ def resource_allocation_index(G):
     """
     H = G.copy()
     nbrs = _neighbor_sets(G)
-    deg = dict(G.degree())
+    deg = _degrees(nbrs)
     for u, v in H.edges():
         common = nbrs[u] & nbrs[v]
         score = sum(1.0 / deg[z] for z in common if deg[z] > 0)
@@ -542,8 +619,14 @@ def resource_allocation_index(G):
 # =====================================================================
 
 
+@not_implemented_for("multigraph")
 def graph_distance_proximity(G, all_pairs=False):
-    r"""Score edges by reciprocal shortest-path distance.
+    r"""Score node pairs by reciprocal shortest-path distance.
+
+    The ``"dist"`` attribute holds the *proximity* :math:`1 / d(u, v)`,
+    where :math:`d(u, v)` is the unweighted (hop-count) shortest-path
+    distance from *u* to *v*, and 0 when *v* is unreachable from *u*.
+    Despite its name it is not the distance itself.
 
     By default, scores are computed for existing edges only.  With
     ``all_pairs=True``, scores are computed for every node pair
@@ -553,7 +636,7 @@ def graph_distance_proximity(G, all_pairs=False):
     Parameters
     ----------
     G : networkx.Graph or networkx.DiGraph
-        Input graph.
+        Input graph.  Edge weights are ignored.
     all_pairs : bool, optional (default=False)
         If ``False``, annotate only existing edges in a copy of *G*.
         If ``True``, return a graph containing all node pairs as edges and
@@ -562,7 +645,23 @@ def graph_distance_proximity(G, all_pairs=False):
     Returns
     -------
     H : graph
-        Graph with the ``"dist"`` edge attribute added.
+        Graph with the ``"dist"`` edge attribute (reciprocal distance)
+        added.
+
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
+    Notes
+    -----
+    Graph distance is a link-prediction score for *unconnected* pairs [1]_.
+    Every existing edge has distance 1, so with ``all_pairs=False`` every
+    edge (other than a self-loop, which gets 0) receives ``"dist" == 1.0``
+    and the score cannot discriminate between edges; filtering on it then
+    keeps an arbitrary subset.  The method is only informative with
+    ``all_pairs=True``.  Distances are not recomputed with the edge
+    removed, because that is not the score defined in [1]_.
 
     References
     ----------
@@ -572,15 +671,14 @@ def graph_distance_proximity(G, all_pairs=False):
     Examples
     --------
     >>> import networkx as nx
-    >>> from networkx_backbone import fraction_filter, graph_distance_proximity
-    >>> G = nx.les_miserables_graph()
+    >>> from networkx_backbone import graph_distance_proximity
+    >>> G = nx.path_graph(4)
     >>> H = graph_distance_proximity(G)
-    >>> backbone = fraction_filter(H, "dist", 0.3, ascending=False)
-    >>> backbone.number_of_edges() <= H.number_of_edges()
-    True
+    >>> {e: H.edges[e]["dist"] for e in H.edges()}
+    {(0, 1): 1.0, (1, 2): 1.0, (2, 3): 1.0}
     >>> H_all = graph_distance_proximity(G, all_pairs=True)
-    >>> H_all.number_of_edges() >= H.number_of_edges()
-    True
+    >>> H_all[0][3]["dist"]  # 1 / 3
+    0.3333333333333333
     """
     sp = dict(nx.all_pairs_shortest_path_length(G))
 
@@ -615,7 +713,8 @@ def graph_distance_proximity(G, all_pairs=False):
     return H
 
 
-def local_path_index(G, epsilon=0.01):
+@not_implemented_for("multigraph")
+def local_path_index(G, epsilon=0.01, weight=None):
     r"""Score each edge by the local path index.
 
     For each edge (u, v):
@@ -624,26 +723,36 @@ def local_path_index(G, epsilon=0.01):
 
         \mathrm{LP}_{uv} = (A^2)_{uv} + \varepsilon \, (A^3)_{uv}
 
-    where *A* is the adjacency matrix.  The score is stored as the
-    ``"lp"`` edge attribute.
+    where *A* is the adjacency matrix (without self-loops).  The score is
+    stored as the ``"lp"`` edge attribute.
 
     Parameters
     ----------
     G : networkx.Graph or networkx.DiGraph
-        Input graph.
+        Input graph.  For directed graphs, :math:`(A^k)_{uv}` counts the
+        directed walks of length *k* from *u* to *v*.
     epsilon : float, optional (default=0.01)
         Weight for third-order paths.
+    weight : string or None, optional (default=None)
+        Edge attribute used as the entries of *A*.  ``None`` (the default)
+        uses the unweighted 0/1 adjacency matrix, like the other proximity
+        indices; pass e.g. ``"weight"`` for a weighted variant.
 
     Returns
     -------
     H : graph
         Copy of *G* with the ``"lp"`` edge attribute added.
 
+    Raises
+    ------
+    NetworkXNotImplemented
+        If *G* is a multigraph.
+
     References
     ----------
     .. [1] Lu, L., Jin, C.-H. & Zhou, T. (2009). Similarity index based on
-       local random walk and superposed with the AA index. *EPL
-       (Europhysics Letters)*, 89(1), 18001.
+       local paths for link prediction of complex networks. *Physical
+       Review E*, 80(4), 046122.
 
     Examples
     --------
@@ -655,18 +764,26 @@ def local_path_index(G, epsilon=0.01):
     >>> backbone.number_of_edges() <= H.number_of_edges()
     True
     """
-    import numpy as np  # noqa: F401
+    import numpy as np
 
     H = G.copy()
+    if not H.number_of_edges():
+        return H
     nodelist = list(G.nodes())
-    A = nx.to_numpy_array(G, nodelist=nodelist)
+    G_noloops = G
+    if nx.number_of_selfloops(G):
+        G_noloops = G.copy()
+        G_noloops.remove_edges_from(list(nx.selfloop_edges(G)))
+    A = nx.to_scipy_sparse_array(G_noloops, nodelist=nodelist, weight=weight, format="csr")
     A2 = A @ A
-    A3 = A2 @ A
-    S = A2 + epsilon * A3
+    S = (A2 + epsilon * (A2 @ A)).tocsr()
     node_idx = {node: i for i, node in enumerate(nodelist)}
-    for u, v in H.edges():
-        i, j = node_idx[u], node_idx[v]
-        H[u][v]["lp"] = float(S[i, j])
+    edges = list(H.edges())
+    rows = np.fromiter((node_idx[u] for u, _ in edges), dtype=np.intp, count=len(edges))
+    cols = np.fromiter((node_idx[v] for _, v in edges), dtype=np.intp, count=len(edges))
+    values = np.asarray(S[rows, cols]).ravel()
+    for (u, v), val in zip(edges, values):
+        H[u][v]["lp"] = float(val)
     return H
 
 
@@ -720,7 +837,7 @@ _COMPLEXITY = {
     "local_path_index": {
         "time": "O(n^3)",
         "space": "O(n^2)",
-        "notes": "Dense adjacency matrix multiplication.",
+        "notes": "Worst case; sparse matrix products are much cheaper on sparse graphs.",
     },
 }
 
