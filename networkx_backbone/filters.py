@@ -72,9 +72,7 @@ def adjust_pvalues(pvalues, method="bh"):
     """
     method_l = method.lower()
     if method_l not in _MTC_METHODS:
-        raise ValueError(
-            f"method must be one of {_MTC_METHODS}, got {method!r}"
-        )
+        raise ValueError(f"method must be one of {_MTC_METHODS}, got {method!r}")
 
     raw = [float(x) for x in pvalues]
     finite = [i for i, x in enumerate(raw) if not math.isnan(x)]
@@ -270,7 +268,12 @@ def _is_score(val):
 
 
 def threshold_filter(
-    G, score, threshold, mode="below", filter_on="edges", include_all_nodes=True,
+    G,
+    score,
+    threshold,
+    mode="below",
+    filter_on="edges",
+    include_all_nodes=True,
     mtc="none",
 ):
     """Retain edges or nodes whose score passes a threshold test.
@@ -360,7 +363,9 @@ def threshold_filter(
 
     elif filter_on == "nodes":
         scored = [
-            (node, data) for node, data in G.nodes(data=True) if data.get(score) is not None
+            (node, data)
+            for node, data in G.nodes(data=True)
+            if data.get(score) is not None
         ]
         if mtc != "none":
             values = adjust_pvalues([data[score] for _, data in scored], mtc)
@@ -437,7 +442,9 @@ def fraction_filter(G, score, fraction, ascending=True, filter_on="edges"):
         return H
 
     elif filter_on == "nodes":
-        scored = [node for node, data in G.nodes(data=True) if _is_score(data.get(score))]
+        scored = [
+            node for node, data in G.nodes(data=True) if _is_score(data.get(score))
+        ]
         scored.sort(key=lambda node: sign * G.nodes[node][score])
         n_keep = max(1, int(len(scored) * fraction)) if scored else 0
         return G.subgraph(scored[:n_keep]).copy()

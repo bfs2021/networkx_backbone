@@ -337,7 +337,9 @@ def _pairwise_pb_tails(P, k, method="auto", need_lower=False):
 # =====================================================================
 
 
-def _projection_weight_matrix(R, method="simple", symmetrize=True, max_iter=1000, tol=1e-12):
+def _projection_weight_matrix(
+    R, method="simple", symmetrize=True, max_iter=1000, tol=1e-12
+):
     """Compute projection weights from a binary incidence matrix."""
     import numpy as np
 
@@ -410,8 +412,7 @@ def _projection_weight_matrix(R, method="simple", symmetrize=True, max_iter=1000
         return W_dir
 
     raise ValueError(
-        "Unknown projection method. Choose one of: "
-        "'simple', 'hyper', 'probs', 'ycn'."
+        "Unknown projection method. Choose one of: 'simple', 'hyper', 'probs', 'ycn'."
     )
 
 
@@ -606,7 +607,9 @@ def probs_projection(B, agent_nodes, weight="weight", directed=False):
 
 @not_implemented_for("directed")
 @not_implemented_for("multigraph")
-def ycn_projection(B, agent_nodes, weight="weight", directed=False, max_iter=1000, tol=1e-12):
+def ycn_projection(
+    B, agent_nodes, weight="weight", directed=False, max_iter=1000, tol=1e-12
+):
     """Project a bipartite graph using YCN random-walk stationary flow.
 
     This method estimates a random-walk transition matrix on the projected
@@ -737,7 +740,9 @@ def bipartite_projection(
             raise ValueError("hyper projection does not support directed=True")
         return hyper_projection(B, agent_nodes=agent_nodes, weight=weight)
     if method_l == "probs":
-        return probs_projection(B, agent_nodes=agent_nodes, weight=weight, directed=directed)
+        return probs_projection(
+            B, agent_nodes=agent_nodes, weight=weight, directed=directed
+        )
     if method_l == "ycn":
         return ycn_projection(
             B,
@@ -748,8 +753,7 @@ def bipartite_projection(
             tol=tol,
         )
     raise ValueError(
-        "Unknown projection method. Choose one of: "
-        "'simple', 'hyper', 'probs', 'ycn'."
+        "Unknown projection method. Choose one of: 'simple', 'hyper', 'probs', 'ycn'."
     )
 
 
@@ -765,7 +769,9 @@ def _apply_projection_weights(
 ):
     """Annotate graph edges with weights from a selected bipartite projection."""
     if projection_directed:
-        raise ValueError("projection_directed=True is not supported for undirected backbones")
+        raise ValueError(
+            "projection_directed=True is not supported for undirected backbones"
+        )
 
     projected = bipartite_projection(
         B,
@@ -826,9 +832,12 @@ def _bicm_fit(R, required=None, prohibited=None, tol=1e-8, max_iter=10000):
         c_res = col_deg - np.rint(fixed_mass.sum(axis=0)).astype(int)
         r_free = free.sum(axis=1)
         c_free = free.sum(axis=0)
-        if (r_res < 0).any() or (r_res > r_free).any() or (c_res < 0).any() or (
-            c_res > c_free
-        ).any():
+        if (
+            (r_res < 0).any()
+            or (r_res > r_free).any()
+            or (c_res < 0).any()
+            or (c_res > c_free).any()
+        ):
             raise nx.NetworkXError(
                 "Edge constraints are inconsistent with the observed degrees."
             )
@@ -891,7 +900,9 @@ def _bicm_fit(R, required=None, prohibited=None, tol=1e-8, max_iter=10000):
             y = c / (Ff * x[:, None] / (1.0 + xy)).sum(axis=0)
             xy = x[:, None] * y[None, :]
             sub = Ff * xy / (1.0 + xy)
-            err = max(np.abs(sub.sum(axis=1) - r).max(), np.abs(sub.sum(axis=0) - c).max())
+            err = max(
+                np.abs(sub.sum(axis=1) - r).max(), np.abs(sub.sum(axis=0) - c).max()
+            )
             if err < tol:
                 break
 
@@ -1709,7 +1720,9 @@ def backbone_from_weighted(
 
     if method_l in ("disparity", "disparity_filter"):
         scored = disparity_filter(G, weight=weight, signed=signed)
-        return threshold_filter(scored, "disparity_pvalue", alpha, mode="below", mtc=mtc)
+        return threshold_filter(
+            scored, "disparity_pvalue", alpha, mode="below", mtc=mtc
+        )
 
     if method_l in ("mlf", "marginal_likelihood", "marginal_likelihood_filter"):
         scored = marginal_likelihood_filter(G, weight=weight, signed=signed)
@@ -1727,8 +1740,7 @@ def backbone_from_weighted(
         return boolean_filter(scored, "global_threshold_keep")
 
     raise ValueError(
-        "Unknown weighted method. Choose one of: "
-        "'disparity', 'mlf', 'lans', 'global'."
+        "Unknown weighted method. Choose one of: 'disparity', 'mlf', 'lans', 'global'."
     )
 
 
@@ -1782,8 +1794,7 @@ def backbone_from_unweighted(G, method="sparsify", **kwargs):
         return boolean_filter(scored, "sparsify_keep")
 
     raise ValueError(
-        "Unknown unweighted method. Choose one of: "
-        "'sparsify', 'lspar', 'local_degree'."
+        "Unknown unweighted method. Choose one of: 'sparsify', 'lspar', 'local_degree'."
     )
 
 

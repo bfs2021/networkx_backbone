@@ -31,7 +31,9 @@ def _brute_pb_pmf(p):
 
 
 class TestBiCM:
-    def test_margins_match_observed_degrees(self, davis_southern_women_graph, davis_women_nodes):
+    def test_margins_match_observed_degrees(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         B = davis_southern_women_graph
         P, agents, artifacts = nb.bicm(B, davis_women_nodes, return_labels=True)
         row = np.array([B.degree(a) for a in agents])
@@ -40,7 +42,9 @@ class TestBiCM:
         np.testing.assert_allclose(P.sum(axis=0), col, atol=1e-6)
         assert np.all((P > 0) & (P < 1))
 
-    def test_is_maximum_entropy_form(self, davis_southern_women_graph, davis_women_nodes):
+    def test_is_maximum_entropy_form(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         # p_ik = x_i y_k / (1 + x_i y_k)  <=>  logit(P) has rank one in the
         # additive sense: logit(p_ik) = a_i + b_k.
         P = nb.bicm(davis_southern_women_graph, davis_women_nodes)
@@ -69,7 +73,9 @@ class TestBiCM:
         with pytest.warns(RuntimeWarning, match="did not converge"):
             nb.bicm(davis_southern_women_graph, davis_women_nodes, max_iter=1)
 
-    def test_converged_fit_does_not_warn(self, davis_southern_women_graph, davis_women_nodes):
+    def test_converged_fit_does_not_warn(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         with warnings.catch_warnings():
             warnings.simplefilter("error")
             nb.bicm(davis_southern_women_graph, davis_women_nodes)
@@ -87,10 +93,14 @@ class TestPoissonBinomial:
         pmf = _brute_pb_pmf(p)
         np.testing.assert_allclose(bp._poisson_binomial_pmf(p), pmf, atol=1e-13)
         for k in range(-1, 11):
-            expected_sf = pmf[max(k, 0):].sum()
+            expected_sf = pmf[max(k, 0) :].sum()
             expected_cdf = pmf[: max(k + 1, 0)].sum()
-            assert bp._poisson_binomial_sf(p, k) == pytest.approx(expected_sf, abs=1e-12)
-            assert bp._poisson_binomial_cdf(p, k) == pytest.approx(expected_cdf, abs=1e-12)
+            assert bp._poisson_binomial_sf(p, k) == pytest.approx(
+                expected_sf, abs=1e-12
+            )
+            assert bp._poisson_binomial_cdf(p, k) == pytest.approx(
+                expected_cdf, abs=1e-12
+            )
 
     def test_rna_formula(self):
         p = np.random.default_rng(1).random(30) * 0.6
@@ -118,8 +128,20 @@ class TestPoissonBinomial:
     def test_sdsm_exact_pvalues_match_brute_force(self):
         B = nx.Graph()
         B.add_edges_from(
-            [("a", 1), ("a", 2), ("a", 3), ("b", 1), ("b", 2), ("c", 3), ("c", 4),
-             ("d", 1), ("d", 4), ("d", 5), ("e", 2), ("e", 5)]
+            [
+                ("a", 1),
+                ("a", 2),
+                ("a", 3),
+                ("b", 1),
+                ("b", 2),
+                ("c", 3),
+                ("c", 4),
+                ("d", 1),
+                ("d", 4),
+                ("d", 5),
+                ("e", 2),
+                ("e", 5),
+            ]
         )
         agents = ["a", "b", "c", "d", "e"]
         P, ag, _ = nb.bicm(B, agents, return_labels=True)
@@ -130,7 +152,7 @@ class TestPoissonBinomial:
                 H = nb.sdsm(B, agents, signed=signed, pvalue_method=method)
                 for i, j in itertools.combinations(range(len(ag)), 2):
                     pmf = _brute_pb_pmf(P[i] * P[j])
-                    hi, lo = pmf[obs[i, j]:].sum(), pmf[: obs[i, j] + 1].sum()
+                    hi, lo = pmf[obs[i, j] :].sum(), pmf[: obs[i, j] + 1].sum()
                     expected = min(1.0, 2 * min(hi, lo)) if signed else hi
                     got = H[ag[i]][ag[j]]["sdsm_pvalue"]
                     assert got == pytest.approx(expected, abs=1e-10)
@@ -150,11 +172,16 @@ class TestSDSMEC:
         agents, artifacts, R, _ = _davis_matrix(B, women)
         required = [(agents[0], artifacts[k]) for k in np.flatnonzero(R[0])[:2]]
         prohibited = [
-            (agents[i], artifacts[k]) for i in range(1, 4) for k in range(5) if R[i, k] == 0
+            (agents[i], artifacts[k])
+            for i in range(1, 4)
+            for k in range(5)
+            if R[i, k] == 0
         ]
         return agents, artifacts, R, required, prohibited
 
-    def test_refit_preserves_margins(self, davis_southern_women_graph, davis_women_nodes):
+    def test_refit_preserves_margins(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         agents, artifacts, R, required, prohibited = self._cells(
             davis_southern_women_graph, davis_women_nodes
         )
@@ -167,44 +194,69 @@ class TestSDSMEC:
         np.testing.assert_allclose(P.sum(axis=0), R.sum(axis=0), atol=1e-6)
         assert np.all(P[req] == 1.0) and np.all(P[pro] == 0.0)
 
-    def test_constraints_accept_numpy_array(self, davis_southern_women_graph, davis_women_nodes):
-        _, _, _, _, prohibited = self._cells(davis_southern_women_graph, davis_women_nodes)
-        as_list = nb.sdsm(davis_southern_women_graph, davis_women_nodes, prohibited=prohibited)
+    def test_constraints_accept_numpy_array(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
+        _, _, _, _, prohibited = self._cells(
+            davis_southern_women_graph, davis_women_nodes
+        )
+        as_list = nb.sdsm(
+            davis_southern_women_graph, davis_women_nodes, prohibited=prohibited
+        )
         as_array = nb.sdsm(
-            davis_southern_women_graph, davis_women_nodes, prohibited=np.array(prohibited)
+            davis_southern_women_graph,
+            davis_women_nodes,
+            prohibited=np.array(prohibited),
         )
         for u, v, p in as_list.edges(data="sdsm_pvalue"):
             assert as_array[u][v]["sdsm_pvalue"] == pytest.approx(p)
 
     def test_reversed_pair_raises(self, davis_southern_women_graph, davis_women_nodes):
-        _, _, _, _, prohibited = self._cells(davis_southern_women_graph, davis_women_nodes)
+        _, _, _, _, prohibited = self._cells(
+            davis_southern_women_graph, davis_women_nodes
+        )
         a, f = prohibited[0]
         with pytest.raises(nx.NetworkXError, match="ordered"):
             nb.sdsm(davis_southern_women_graph, davis_women_nodes, prohibited=[(f, a)])
 
     @pytest.mark.parametrize("bad", [["abc"], [("x",)], [("a", "b", "c")], [5]])
-    def test_malformed_pairs_raise(self, davis_southern_women_graph, davis_women_nodes, bad):
+    def test_malformed_pairs_raise(
+        self, davis_southern_women_graph, davis_women_nodes, bad
+    ):
         with pytest.raises(nx.NetworkXError):
             nb.sdsm(davis_southern_women_graph, davis_women_nodes, required=bad)
 
-    def test_agent_agent_pair_raises(self, davis_southern_women_graph, davis_women_nodes):
+    def test_agent_agent_pair_raises(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         pair = (davis_women_nodes[0], davis_women_nodes[1])
         with pytest.raises(nx.NetworkXError):
             nb.sdsm(davis_southern_women_graph, davis_women_nodes, prohibited=[pair])
 
-    def test_contradictory_constraints_raise(self, davis_southern_women_graph, davis_women_nodes):
-        _, _, _, required, prohibited = self._cells(davis_southern_women_graph, davis_women_nodes)
+    def test_contradictory_constraints_raise(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
+        _, _, _, required, prohibited = self._cells(
+            davis_southern_women_graph, davis_women_nodes
+        )
         with pytest.raises(nx.NetworkXError):
-            nb.sdsm(davis_southern_women_graph, davis_women_nodes, prohibited=required[:1])
+            nb.sdsm(
+                davis_southern_women_graph, davis_women_nodes, prohibited=required[:1]
+            )
         with pytest.raises(nx.NetworkXError):
-            nb.sdsm(davis_southern_women_graph, davis_women_nodes, required=prohibited[:1])
+            nb.sdsm(
+                davis_southern_women_graph, davis_women_nodes, required=prohibited[:1]
+            )
 
     def test_empty_constraints_equal_unconstrained(
         self, davis_southern_women_graph, davis_women_nodes
     ):
         base = nb.sdsm(davis_southern_women_graph, davis_women_nodes)
         empty = nb.sdsm(
-            davis_southern_women_graph, davis_women_nodes, prohibited=[], required=np.empty((0, 2))
+            davis_southern_women_graph,
+            davis_women_nodes,
+            prohibited=[],
+            required=np.empty((0, 2)),
         )
         for u, v, p in base.edges(data="sdsm_pvalue"):
             assert empty[u][v]["sdsm_pvalue"] == pytest.approx(p)
@@ -235,7 +287,11 @@ class TestFDSMNull:
     ):
         trials = 50
         H = nb.fdsm(
-            davis_southern_women_graph, davis_women_nodes, trials=trials, seed=0, signed=signed
+            davis_southern_women_graph,
+            davis_women_nodes,
+            trials=trials,
+            seed=0,
+            signed=signed,
         )
         pvals = [p for *_, p in H.edges(data="fdsm_pvalue")]
         assert min(pvals) >= 1 / (trials + 1) - 1e-12
@@ -252,9 +308,15 @@ class TestFDSMNull:
         "make_seed",
         [lambda: 3, lambda: np.random.default_rng(3), lambda: np.random.RandomState(3)],
     )
-    def test_seed_types_reproducible(self, davis_southern_women_graph, davis_women_nodes, make_seed):
-        a = nb.fdsm(davis_southern_women_graph, davis_women_nodes, trials=30, seed=make_seed())
-        b = nb.fdsm(davis_southern_women_graph, davis_women_nodes, trials=30, seed=make_seed())
+    def test_seed_types_reproducible(
+        self, davis_southern_women_graph, davis_women_nodes, make_seed
+    ):
+        a = nb.fdsm(
+            davis_southern_women_graph, davis_women_nodes, trials=30, seed=make_seed()
+        )
+        b = nb.fdsm(
+            davis_southern_women_graph, davis_women_nodes, trials=30, seed=make_seed()
+        )
         assert dict(nx.get_edge_attributes(a, "fdsm_pvalue")) == dict(
             nx.get_edge_attributes(b, "fdsm_pvalue")
         )
@@ -282,7 +344,9 @@ def _random_bipartite(n_agents, n_artifacts, density, seed):
 
 
 class TestFixedModels:
-    @pytest.mark.parametrize("dims", [(3, 3, 4), (4, 3, 7), (3, 4, 5), (2, 4, 6), (4, 4, 3)])
+    @pytest.mark.parametrize(
+        "dims", [(3, 3, 4), (4, 3, 7), (3, 4, 5), (2, 4, 6), (4, 4, 3)]
+    )
     def test_fixedfill_pmf_matches_enumeration(self, dims):
         na, nf, T = dims
         counts = np.zeros(nf + 1)
@@ -291,7 +355,9 @@ class TestFixedModels:
             M[list(cells)] = 1
             M = M.reshape(na, nf)
             counts[M[0] @ M[1]] += 1
-        np.testing.assert_allclose(bp._fixedfill_pmf(na, nf, T), counts / counts.sum(), atol=1e-12)
+        np.testing.assert_allclose(
+            bp._fixedfill_pmf(na, nf, T), counts / counts.sum(), atol=1e-12
+        )
 
     def test_fixedfill_pvalues(self):
         B, agents, _, R = _random_bipartite(3, 4, 0.5, seed=2)
@@ -300,7 +366,7 @@ class TestFixedModels:
         obs = R @ R.T
         for i, j in itertools.combinations(range(3), 2):
             assert H[agents[i]][agents[j]]["fixedfill_pvalue"] == pytest.approx(
-                pmf[obs[i, j]:].sum()
+                pmf[obs[i, j] :].sum()
             )
 
     def test_fixedcol_matches_enumeration(self):
@@ -355,7 +421,9 @@ _GRAPH_FUNCS = [
 
 class TestValidation:
     @pytest.mark.parametrize("func", _GRAPH_FUNCS)
-    def test_generator_agent_nodes(self, func, davis_southern_women_graph, davis_women_nodes):
+    def test_generator_agent_nodes(
+        self, func, davis_southern_women_graph, davis_women_nodes
+    ):
         from_list = func(davis_southern_women_graph, list(davis_women_nodes))
         from_gen = func(davis_southern_women_graph, (w for w in davis_women_nodes))
         if isinstance(from_list, np.ndarray):
@@ -402,7 +470,9 @@ class TestValidation:
 
 
 class TestWrapperThresholding:
-    @pytest.mark.parametrize("method", ["sdsm", "fdsm", "fixedfill", "fixedrow", "fixedcol"])
+    @pytest.mark.parametrize(
+        "method", ["sdsm", "fdsm", "fixedfill", "fixedrow", "fixedcol"]
+    )
     @pytest.mark.parametrize("signed", [False, True])
     def test_threshold_consistent_across_methods(
         self, davis_southern_women_graph, davis_women_nodes, method, signed
@@ -423,22 +493,38 @@ class TestWrapperThresholding:
             assert all(d["sign"] in (-1, 1) for *_, d in H.edges(data=True))
         # Same set as scoring every pair and thresholding by hand.
         scored = getattr(nb, method)(
-            davis_southern_women_graph, davis_women_nodes, alpha=np.inf, signed=signed, **kw
+            davis_southern_women_graph,
+            davis_women_nodes,
+            alpha=np.inf,
+            signed=signed,
+            **kw,
         )
-        expected = {frozenset((u, v)) for u, v, p in scored.edges(data=attr) if p < alpha}
+        expected = {
+            frozenset((u, v)) for u, v, p in scored.edges(data=attr) if p < alpha
+        }
         assert {frozenset(e) for e in H.edges()} == expected
-        assert H.number_of_edges() < len(davis_women_nodes) * (len(davis_women_nodes) - 1) // 2
+        assert (
+            H.number_of_edges()
+            < len(davis_women_nodes) * (len(davis_women_nodes) - 1) // 2
+        )
 
     @pytest.mark.parametrize("method", ["sdsm", "fixedrow"])
     def test_mtc_forwarded(self, davis_southern_women_graph, davis_women_nodes, method):
         alpha = 0.3
-        scored = getattr(nb, method)(davis_southern_women_graph, davis_women_nodes, alpha=np.inf)
+        scored = getattr(nb, method)(
+            davis_southern_women_graph, davis_women_nodes, alpha=np.inf
+        )
         attr = f"{method}_pvalue"
         edges = list(scored.edges(data=attr))
         adjusted = nb.adjust_pvalues([p for *_, p in edges], "bonferroni")
-        expected = {frozenset((u, v)) for (u, v, _), q in zip(edges, adjusted) if q < alpha}
+        expected = {
+            frozenset((u, v)) for (u, v, _), q in zip(edges, adjusted) if q < alpha
+        }
         H = nb.backbone_from_projection(
-            davis_southern_women_graph, davis_women_nodes, method=method, alpha=alpha,
+            davis_southern_women_graph,
+            davis_women_nodes,
+            method=method,
+            alpha=alpha,
             mtc="bonferroni",
         )
         assert {frozenset(e) for e in H.edges()} == expected

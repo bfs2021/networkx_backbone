@@ -103,7 +103,9 @@ class TestDisparityReference:
         # each source (out-degree 1) nothing is testable, but from v's
         # incoming links the heavy one stands out.
         G = nx.DiGraph()
-        G.add_weighted_edges_from([(f"s{i}", "v", w) for i, w in enumerate([100, 1, 1, 1, 1])])
+        G.add_weighted_edges_from(
+            [(f"s{i}", "v", w) for i, w in enumerate([100, 1, 1, 1, 1])]
+        )
         H = nb.disparity_filter(G)
         expected = (1 - 100 / 104) ** 4
         assert H["s0"]["v"]["disparity_pvalue"] == pytest.approx(expected)
@@ -169,17 +171,23 @@ def _ecm_expectations(fit, directed):
 
 class TestECMReference:
     @pytest.mark.parametrize("directed", [False, True])
-    def test_fit_reproduces_degrees_and_strengths(self, les_miserables_weighted, directed):
+    def test_fit_reproduces_degrees_and_strengths(
+        self, les_miserables_weighted, directed
+    ):
         import numpy as np
 
         from networkx_backbone.statistical import _fit_ecm
 
         G = nx.DiGraph(les_miserables_weighted) if directed else les_miserables_weighted
         nodes = list(G)
-        k_out = np.array([G.out_degree(v) if directed else G.degree(v) for v in nodes], float)
+        k_out = np.array(
+            [G.out_degree(v) if directed else G.degree(v) for v in nodes], float
+        )
         s_out = np.array(
             [
-                G.out_degree(v, weight="weight") if directed else G.degree(v, weight="weight")
+                G.out_degree(v, weight="weight")
+                if directed
+                else G.degree(v, weight="weight")
                 for v in nodes
             ],
             float,

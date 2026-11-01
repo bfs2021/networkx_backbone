@@ -36,7 +36,7 @@ class TestEdgeFraction:
 
     def test_half_edges(self):
         G = nx.complete_graph(4)  # 6 edges
-        H = nx.path_graph(4)     # 3 edges
+        H = nx.path_graph(4)  # 3 edges
         assert edge_fraction(G, H) == 0.5
 
 

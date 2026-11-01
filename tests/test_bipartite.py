@@ -74,7 +74,9 @@ def test_probs_projection_directed():
 
 @pytest.mark.parametrize("method", ["simple", "hyper", "probs", "ycn"])
 def test_bipartite_projection_dispatch_methods(bipartite_graph, method):
-    projection = bipartite_projection(bipartite_graph, agent_nodes=[1, 2, 3], method=method)
+    projection = bipartite_projection(
+        bipartite_graph, agent_nodes=[1, 2, 3], method=method
+    )
     assert isinstance(projection, nx.Graph)
     assert set(projection.nodes()) == {1, 2, 3}
 
@@ -113,12 +115,15 @@ class TestSDSM:
         with pytest.raises(nx.NetworkXError):
             sdsm(bipartite_graph, agent_nodes=[99])
 
-    def test_davis_southern_women_graph(self, davis_southern_women_graph, davis_women_nodes):
+    def test_davis_southern_women_graph(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         backbone = sdsm(davis_southern_women_graph, agent_nodes=davis_women_nodes)
         assert set(backbone.nodes()).issubset(set(davis_women_nodes))
-        assert backbone.number_of_edges() == len(davis_women_nodes) * (
-            len(davis_women_nodes) - 1
-        ) // 2
+        assert (
+            backbone.number_of_edges()
+            == len(davis_women_nodes) * (len(davis_women_nodes) - 1) // 2
+        )
         for _, _, data in backbone.edges(data=True):
             assert "sdsm_pvalue" in data
 
@@ -162,7 +167,9 @@ class TestFDSM:
         with pytest.raises(ValueError):
             fdsm(bipartite_graph, agent_nodes=[1, 2, 3], trials=0)
 
-    def test_davis_southern_women_graph(self, davis_southern_women_graph, davis_women_nodes):
+    def test_davis_southern_women_graph(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         backbone = fdsm(
             davis_southern_women_graph,
             agent_nodes=davis_women_nodes,
@@ -170,15 +177,20 @@ class TestFDSM:
             seed=42,
         )
         assert set(backbone.nodes()).issubset(set(davis_women_nodes))
-        assert backbone.number_of_edges() == len(davis_women_nodes) * (
-            len(davis_women_nodes) - 1
-        ) // 2
+        assert (
+            backbone.number_of_edges()
+            == len(davis_women_nodes) * (len(davis_women_nodes) - 1) // 2
+        )
         for _, _, data in backbone.edges(data=True):
             assert "fdsm_pvalue" in data
 
     def test_alpha_does_not_change_projection(self, bipartite_graph):
-        low_alpha = fdsm(bipartite_graph, agent_nodes=[1, 2, 3], alpha=0.001, trials=50, seed=42)
-        high_alpha = fdsm(bipartite_graph, agent_nodes=[1, 2, 3], alpha=0.9, trials=50, seed=42)
+        low_alpha = fdsm(
+            bipartite_graph, agent_nodes=[1, 2, 3], alpha=0.001, trials=50, seed=42
+        )
+        high_alpha = fdsm(
+            bipartite_graph, agent_nodes=[1, 2, 3], alpha=0.9, trials=50, seed=42
+        )
         assert set(low_alpha.edges()) == set(high_alpha.edges())
 
     def test_projection_weight_annotation(self, bipartite_graph):
@@ -195,8 +207,12 @@ class TestFDSM:
 
 
 class TestBipartiteUtilities:
-    def test_bicm_returns_probability_matrix(self, davis_southern_women_graph, davis_women_nodes):
-        p, agents, artifacts = bicm(davis_southern_women_graph, davis_women_nodes, return_labels=True)
+    def test_bicm_returns_probability_matrix(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
+        p, agents, artifacts = bicm(
+            davis_southern_women_graph, davis_women_nodes, return_labels=True
+        )
         assert p.shape == (len(agents), len(artifacts))
         assert np.all(p >= 0.0)
         assert np.all(p <= 1.0)
@@ -225,7 +241,9 @@ class TestBipartiteUtilities:
         (fixedcol, "fixedcol_pvalue"),
     ],
 )
-def test_fixed_projection_methods(davis_southern_women_graph, davis_women_nodes, method, attr):
+def test_fixed_projection_methods(
+    davis_southern_women_graph, davis_women_nodes, method, attr
+):
     backbone_graph = method(davis_southern_women_graph, davis_women_nodes, alpha=0.5)
     assert set(backbone_graph.nodes()).issubset(set(davis_women_nodes))
     for _, _, data in backbone_graph.edges(data=True):
@@ -233,7 +251,9 @@ def test_fixed_projection_methods(davis_southern_women_graph, davis_women_nodes,
         assert 0.0 <= data[attr] <= 1.0
 
 
-def test_backbone_from_projection_dispatch(davis_southern_women_graph, davis_women_nodes):
+def test_backbone_from_projection_dispatch(
+    davis_southern_women_graph, davis_women_nodes
+):
     backbone_graph = backbone_from_projection(
         davis_southern_women_graph,
         davis_women_nodes,
@@ -267,7 +287,9 @@ def test_backbone_from_projection_sdsm_with_custom_projection(
 
 
 def test_backbone_from_weighted_dispatch(weighted_triangle):
-    backbone_graph = backbone_from_weighted(weighted_triangle, method="disparity", alpha=1.0)
+    backbone_graph = backbone_from_weighted(
+        weighted_triangle, method="disparity", alpha=1.0
+    )
     assert backbone_graph.number_of_nodes() == weighted_triangle.number_of_nodes()
     with pytest.raises(ValueError):
         backbone_from_weighted(weighted_triangle, method="global")
@@ -301,9 +323,14 @@ def test_backbone_from_unweighted_dispatch(karate):
     assert backbone_graph.number_of_nodes() == karate.number_of_nodes()
 
 
-def test_backbone_dispatch(davis_southern_women_graph, davis_women_nodes, weighted_triangle):
+def test_backbone_dispatch(
+    davis_southern_women_graph, davis_women_nodes, weighted_triangle
+):
     proj_backbone = backbone(
-        davis_southern_women_graph, method="sdsm", agent_nodes=davis_women_nodes, alpha=0.5
+        davis_southern_women_graph,
+        method="sdsm",
+        agent_nodes=davis_women_nodes,
+        alpha=0.5,
     )
     weighted_backbone = backbone(weighted_triangle, method="disparity", alpha=1.0)
     assert set(proj_backbone.nodes()).issubset(set(davis_women_nodes))
@@ -316,16 +343,27 @@ def test_backbone_dispatch(davis_southern_women_graph, davis_women_nodes, weight
 class TestSignedProjections:
     def test_sdsm_signed_adds_sign(self, davis_southern_women_graph, davis_women_nodes):
         H = sdsm(davis_southern_women_graph, agent_nodes=davis_women_nodes, signed=True)
-        assert all("sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True))
+        assert all(
+            "sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True)
+        )
         assert {d["sign"] for _, _, d in H.edges(data=True)} == {-1, 1}
         assert all(0.0 <= d["sdsm_pvalue"] <= 1.0 for _, _, d in H.edges(data=True))
 
-    def test_sdsm_unsigned_has_no_sign(self, davis_southern_women_graph, davis_women_nodes):
+    def test_sdsm_unsigned_has_no_sign(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         H = sdsm(davis_southern_women_graph, agent_nodes=davis_women_nodes)
         assert all("sign" not in d for _, _, d in H.edges(data=True))
 
-    def test_fdsm_signed_deterministic(self, davis_southern_women_graph, davis_women_nodes):
-        kw = {"agent_nodes": davis_women_nodes, "trials": 200, "seed": 7, "signed": True}
+    def test_fdsm_signed_deterministic(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
+        kw = {
+            "agent_nodes": davis_women_nodes,
+            "trials": 200,
+            "seed": 7,
+            "signed": True,
+        }
         a = fdsm(davis_southern_women_graph, **kw)
         b = fdsm(davis_southern_women_graph, **kw)
         assert all("sign" in d for _, _, d in a.edges(data=True))
@@ -334,10 +372,14 @@ class TestSignedProjections:
         }
 
     @pytest.mark.parametrize("model", [fixedrow, fixedcol, fixedfill])
-    def test_fixed_models_signed(self, model, davis_southern_women_graph, davis_women_nodes):
+    def test_fixed_models_signed(
+        self, model, davis_southern_women_graph, davis_women_nodes
+    ):
         H = model(davis_southern_women_graph, davis_women_nodes, alpha=0.3, signed=True)
         assert H.number_of_edges() > 0
-        assert all("sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True))
+        assert all(
+            "sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True)
+        )
 
     def test_backbone_from_projection_signed_passthrough(
         self, davis_southern_women_graph, davis_women_nodes
@@ -353,7 +395,9 @@ class TestSignedProjections:
 
 
 class TestSDSMEdgeConstraints:
-    def test_constraints_change_null(self, davis_southern_women_graph, davis_women_nodes):
+    def test_constraints_change_null(
+        self, davis_southern_women_graph, davis_women_nodes
+    ):
         B = davis_southern_women_graph
         women = davis_women_nodes
         artifacts = sorted(
@@ -388,9 +432,7 @@ class TestSDSMEdgeConstraints:
     def test_constraints_compose_with_signed(
         self, davis_southern_women_graph, davis_women_nodes
     ):
-        artifact = next(
-            n for n in davis_southern_women_graph[davis_women_nodes[0]]
-        )
+        artifact = next(n for n in davis_southern_women_graph[davis_women_nodes[0]])
         H = sdsm(
             davis_southern_women_graph,
             agent_nodes=davis_women_nodes,

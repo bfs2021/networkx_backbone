@@ -1,6 +1,5 @@
 """Tests for proximity-based edge scoring methods."""
 
-
 import networkx as nx
 
 from networkx_backbone import (

@@ -60,7 +60,9 @@ class TestGLABPaperEquations:
     def test_cycle_hand_computed(self):
         # Every node has k=2 and I=1/2, so SI = (1 - 1/2) ** (1 ** c) = 0.5.
         H = glab_filter(nx.cycle_graph(4), weight=None, c=0.7)
-        assert all(d["glab_pvalue"] == pytest.approx(0.5) for *_, d in H.edges(data=True))
+        assert all(
+            d["glab_pvalue"] == pytest.approx(0.5) for *_, d in H.edges(data=True)
+        )
 
     def test_star_leaf_uses_hub_side(self):
         # Hub of degree 3: I = 1/3 for each spoke, SI = (2/3) ** (2 ** c).

@@ -36,11 +36,16 @@ def complete4():
 def bipartite_graph():
     """Simple bipartite graph with agents [1,2,3] and artifacts ['a','b','c']."""
     B = nx.Graph()
-    B.add_edges_from([
-        (1, "a"), (1, "b"),
-        (2, "a"), (2, "c"),
-        (3, "b"), (3, "c"),
-    ])
+    B.add_edges_from(
+        [
+            (1, "a"),
+            (1, "b"),
+            (2, "a"),
+            (2, "c"),
+            (3, "b"),
+            (3, "c"),
+        ]
+    )
     return B
 
 

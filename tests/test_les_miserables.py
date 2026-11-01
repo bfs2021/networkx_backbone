@@ -26,7 +26,9 @@ WEIGHTED_METHOD_EDGE_COUNTS = [
     (
         "disparity_filter",
         lambda G: nb.disparity_filter(G),
-        lambda H: nb.threshold_filter(H, "disparity_pvalue", DEFAULT_PVALUE, mode="below"),
+        lambda H: nb.threshold_filter(
+            H, "disparity_pvalue", DEFAULT_PVALUE, mode="below"
+        ),
         9,
     ),
     (
@@ -273,7 +275,9 @@ def test_weighted_methods_edge_counts(
     scored = score_method(les_miserables_weighted)
     filtered = filter_method(scored)
     assert isinstance(filtered, nx.Graph), method_name
-    assert filtered.number_of_nodes() == les_miserables_weighted.number_of_nodes(), method_name
+    assert filtered.number_of_nodes() == les_miserables_weighted.number_of_nodes(), (
+        method_name
+    )
     assert filtered.number_of_edges() == expected_edges, method_name
     _warn_if_no_edge_reduction(
         method_name,
@@ -298,7 +302,9 @@ def test_unweighted_methods_edge_counts(
     scored = score_method(les_miserables_unweighted)
     filtered = filter_method(scored)
     assert isinstance(filtered, nx.Graph), method_name
-    assert filtered.number_of_nodes() == les_miserables_unweighted.number_of_nodes(), method_name
+    assert filtered.number_of_nodes() == les_miserables_unweighted.number_of_nodes(), (
+        method_name
+    )
     assert filtered.number_of_edges() == expected_edges, method_name
     _warn_if_no_edge_reduction(
         method_name,

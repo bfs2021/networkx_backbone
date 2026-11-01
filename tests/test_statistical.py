@@ -155,7 +155,9 @@ class TestSignedBackbones:
         H = disparity_filter(G, signed=True)
         assert H["c"][1]["sign"] == 1  # strong edge
         assert H["c"][2]["sign"] == -1  # weak edge
-        assert all(0.0 <= d["disparity_pvalue"] <= 1.0 for _, _, d in H.edges(data=True))
+        assert all(
+            0.0 <= d["disparity_pvalue"] <= 1.0 for _, _, d in H.edges(data=True)
+        )
 
     def test_unsigned_unchanged(self):
         G = self._hub_star()
@@ -166,12 +168,18 @@ class TestSignedBackbones:
 
     @pytest.mark.parametrize(
         "scorer,attr",
-        [(disparity_filter, "disparity_pvalue"), (mlf, "ml_pvalue"), (lans, "lans_pvalue")],
+        [
+            (disparity_filter, "disparity_pvalue"),
+            (mlf, "ml_pvalue"),
+            (lans, "lans_pvalue"),
+        ],
     )
     def test_signed_adds_sign_and_two_sided_pvalue(self, scorer, attr):
         G = nx.les_miserables_graph()
         H = scorer(G, signed=True)
-        assert all("sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True))
+        assert all(
+            "sign" in d and d["sign"] in (-1, 1) for _, _, d in H.edges(data=True)
+        )
         assert all(0.0 <= d[attr] <= 1.0 for _, _, d in H.edges(data=True))
 
     def test_signed_pvalue_is_two_sided(self):

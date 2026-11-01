@@ -48,7 +48,10 @@ class TestAttributePreservation:
     def test_threshold_filter_keeps_graph_and_node_attrs(self, scored):
         H = nb.threshold_filter(scored, "p", 0.05, include_all_nodes=False)
         assert H.graph["name"] == "toy"
-        assert dict(H.nodes(data=True)) == {"a": {"color": "red"}, "b": {"color": "blue"}}
+        assert dict(H.nodes(data=True)) == {
+            "a": {"color": "red"},
+            "b": {"color": "blue"},
+        }
 
     def test_boolean_filter_keeps_graph_attrs(self, scored):
         assert nb.boolean_filter(scored, "keep").graph["name"] == "toy"
@@ -73,7 +76,9 @@ class TestFractionFilterUnscored:
         G = nx.path_graph(4)
         nx.set_node_attributes(G, {0: 3.0, 1: 1.0, 2: 2.0, 3: 0.5}, "s")
         assert set(nb.fraction_filter(G, "s", 0.5, filter_on="nodes")) == {3, 1}
-        assert set(nb.fraction_filter(G, "s", 0.5, ascending=False, filter_on="nodes")) == {0, 2}
+        assert set(
+            nb.fraction_filter(G, "s", 0.5, ascending=False, filter_on="nodes")
+        ) == {0, 2}
 
     def test_invalid_filter_on(self):
         with pytest.raises(ValueError):
@@ -99,7 +104,10 @@ class TestMultigraphFilters:
     )
     def test_multigraph_to_weighted_aggregate(self, aggregate, expected):
         M = nx.MultiGraph([(0, 1, {"weight": 10}), (0, 1, {"weight": 20})])
-        assert nb.multigraph_to_weighted(M, aggregate=aggregate)[0][1]["weight"] == expected
+        assert (
+            nb.multigraph_to_weighted(M, aggregate=aggregate)[0][1]["weight"]
+            == expected
+        )
 
     def test_multigraph_to_weighted_bad_aggregate(self):
         with pytest.raises(ValueError):
