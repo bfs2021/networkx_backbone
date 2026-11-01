@@ -2,7 +2,7 @@
 
 Backbone extraction algorithms for complex networks, built on [NetworkX](https://networkx.org/).
 
-This library provides 87 functions across 10 modules for extracting backbone
+This library provides about 90 functions across 11 modules for extracting backbone
 structures from weighted, unweighted, and higher-order (hypergraph) networks.
 
 Full documentation: https://www.brianckeegan.com/networkx_backbone/
@@ -37,6 +37,7 @@ pip install -e ".[full]"
 | **hybrid** | Combined approaches | `glab_filter` |
 | **bipartite** | Bipartite projection backbones | `simple_projection`, `hyper_projection`, `probs_projection`, `ycn_projection`, `sdsm`, `fdsm`, `fixedfill`, `fixedrow`, `fixedcol`, `backbone` |
 | **hypergraph** | Higher-order (hypergraph) backbones | `mdl_hypergraph_backbone`, `hypergraph_compression_ratio`, `intersection_graph`, `maximal_hyperedges`, `order_filter`, `s_components`, `statistically_validated_hypergraph`, `statistically_validated_cores` |
+| **hypergraph_io** | Hypergraph ingestion and interoperability | `hypergraph_to_bipartite`, `read_hif`, `write_hif`, `from_xgi`/`to_xgi`, `from_hypernetx`/`to_hypernetx`, `from_hypergraphx`/`to_hypergraphx`, `from_hat`/`to_hat` |
 | **unweighted** | Sparsification for unweighted graphs | `sparsify`, `lspar`, `local_degree` |
 | **filters** | Post-hoc filtering utilities | `multigraph_to_weighted`, `threshold_filter`, `fraction_filter`, `boolean_filter`, `consensus_backbone` |
 | **measures** | Evaluation and comparison | `node_fraction`, `edge_fraction`, `weight_fraction`, `reachability`, `ks_degree`, `ks_weight`, `compare_backbones` |
@@ -163,14 +164,22 @@ results = nb.compare_backbones(G, backbones)
 ## Dependencies
 
 - **Required**: `networkx >= 3.0`
-- **Optional**: `numpy >= 1.23`, `scipy >= 1.9`, `matplotlib >= 3.7` (needed for statistical methods, bipartite methods, some structural/proximity methods, visualization helpers, and docs gallery generation)
+- **Optional**: `numpy >= 1.23`, `scipy >= 1.9` (`[full]`: some statistical methods, bipartite null models, SVH/SVC, `doubly_stochastic_filter`, `local_path_index`, KS measures) and `matplotlib >= 3.7` (`[viz]`: visualization helpers and the docs gallery). Calling a function whose optional dependency is missing raises `ImportError`; the pure-Python methods work with NetworkX alone.
+- **Hypergraph interop (optional, lazily imported)**: `xgi`, `hypernetx`, `hypergraphx`, `Hypergraph-Analysis-Toolbox`
 
 ## Testing
 
 ```bash
-pip install -e ".[test]"
-pytest
+pip install -e ".[dev]"
+pytest --doctest-modules networkx_backbone tests   # tests + docstring examples
+ruff check networkx_backbone tests && ruff format --check networkx_backbone tests
 ```
+
+## Roadmap
+
+Planned work, open gaps, and recently completed milestones are tracked in the
+[roadmap](https://www.brianckeegan.com/networkx_backbone/roadmap.html)
+([source](docs/roadmap.rst)).
 
 ## Visualization gallery
 
@@ -195,6 +204,7 @@ Key papers behind the implemented methods:
 - Foti, N. J., Hughes, J. M., & Rockmore, D. N. (2011). [Nonparametric sparsification of complex multiscale networks](https://doi.org/10.1371/journal.pone.0016431). *PLoS One*, 6(2), e16431.
 - Girvan, M., & Newman, M. E. J. (2002). [Community structure in social and biological networks](https://doi.org/10.1073/pnas.122653799). *PNAS*, 99(12), 7821-7826.
 - Godard, K., & Neal, Z. P. (2022). [fastball: A fast algorithm to sample bipartite graphs with fixed degree sequences](https://doi.org/10.1093/comnet/cnac049). *J. Complex Networks*, 10(6), cnac049.
+- Gemmetto, V., Cardillo, A., & Garlaschelli, D. (2017). [Irreducible network backbones: unbiased graph filtering via maximum entropy](https://arxiv.org/abs/1706.00230). arXiv:1706.00230.
 - Grady, D., Thiemann, C., & Brockmann, D. (2012). [Robust classification of salient links in complex networks](https://doi.org/10.1038/ncomms1847). *Nature Communications*, 3, 864.
 - Hamann, M., Lindner, G., Meyerhenke, H., Staudt, C. L., and Wagner, D. (2016). [Structure-Preserving Sparsification Methods for Social Networks](https://doi.org/10.1007/s13278-016-0332-2). Social Network Analysis and Mining, 6, 22.
 - Simas, T., Correia, R. B., & Rocha, L. M. (2021). [The distance backbone of complex networks](https://doi.org/10.1093/comnet/cnab021). *J. Complex Networks*, 9(6), cnab021.
@@ -206,7 +216,8 @@ Key papers behind the implemented methods:
 - Saracco, F., Di Clemente, R., Gabrielli, A., & Squartini, T. (2015). [Randomizing bipartite networks: the case of the World Trade Web](https://doi.org/10.1038/srep10595). *Scientific Reports*, 5, 10595.
 - Satuluri, V., Parthasarathy, S., & Ruan, Y. (2011). [Local graph sparsification for scalable clustering](https://doi.org/10.1145/1989323.1989399). *SIGMOD*, 721-732.
 - Serrano, M. A., Boguna, M., & Vespignani, A. (2009). [Extracting the multiscale backbone of complex weighted networks](https://doi.org/10.1073/pnas.0808904106). *PNAS*, 106(16), 6483-6488.
-- Van Nuffel, N., Heyndrickx, C., & Wets, G. (2010). Measuring hierarchy and reciprocity in networks.
+- Van Nuffel, N., Saey, P., Derudder, B., Devriendt, L., & Witlox, F. (2010). [Measuring hierarchical differentiation: connectivity and dominance in the European urban network](https://doi.org/10.1080/03081060.2010.494028). *Transportation Planning and Technology*, 33(4), 343-366.
+- Zhang, X., Zhang, Z., Zhao, H., Wang, Q., & Zhu, J. (2014). [Extracting the globally and locally adaptive backbone of complex networks](https://doi.org/10.1371/journal.pone.0100428). *PLoS One*, 9(6), e100428.
 - Yassin, A., Haidar, A., Cherifi, H., Seba, H., & Togni, O. (2023). [An evaluation tool for backbone extraction techniques in weighted complex networks](https://doi.org/10.1038/s41598-023-42076-3). *Scientific Reports*, 13, 17000. 
 - Yassin A., Cherifi, H., Seba, H., & Togni, O. (2025). [Backbone extraction through statistical edge filtering: A comparative study](https://doi.org/10.1371/journal.pone.0316141). *PLoS One*, 20(1): e0316141.
 - Yassin A., Cherifi, H., Seba, H., & Togni, O. (2025). [Exploring weighted network backbone extraction: A comparative analysis of structural techniques](https://doi.org/10.1371/journal.pone.0322298). *PLoS One*, 20(5): e0322298.

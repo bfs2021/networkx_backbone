@@ -175,8 +175,10 @@ References
   backbones: unbiased graph filtering via maximum entropy*. arXiv:1706.00230.
 - Foti, N. J., Hughes, J. M., & Rockmore, D. N. (2011). *Nonparametric
   sparsification of complex multiscale networks*. PLOS ONE, 6(2), e16431.
-- Van Nuffel, N., Heyndrickx, C., & Wets, G. (2010). *Measuring hierarchy and
-  reciprocity in networks*.
+- Van Nuffel, N., Saey, P., Derudder, B., Devriendt, L., & Witlox, F. (2010).
+  *Measuring hierarchical differentiation: connectivity and dominance in the
+  European urban network*. Transportation Planning and Technology, 33(4),
+  343-366.
 - Benjamini, Y., & Hochberg, Y. (1995). *Controlling the false discovery rate*.
   J. Royal Statistical Society B, 57(1), 289-300.
 - Benjamini, Y., & Yekutieli, D. (2001). *The control of the false discovery rate

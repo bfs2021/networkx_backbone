@@ -36,6 +36,12 @@ p-value is below a significance threshold::
 
     backbone = nb.threshold_filter(scored, "disparity_pvalue", 0.05)
 
+Every edge gets its own test, so with hundreds of edges some will pass by
+chance. Pass ``mtc`` to correct for multiple testing (``"bonferroni"``,
+``"holm"``, ``"hochberg"``, ``"bh"``/``"fdr"``, or ``"by"``)::
+
+    strict = nb.threshold_filter(scored, "disparity_pvalue", 0.05, mtc="holm")
+
 Step 4: Evaluate the backbone
 ------------------------------
 
@@ -75,6 +81,13 @@ filter using the boolean keep attribute::
     scored = nb.sdsm(B, agent_nodes=women_nodes, projection="hyper")
     backbone = nb.threshold_filter(scored, "sdsm_pvalue", 0.05, mode="below")
 
+**Hypergraph backbone**: Prune nested and redundant hyperedges with the
+parameter-free minimum-description-length backbone::
+
+    H = [(1, 2, 3, 4), (1, 2, 3), (2, 3, 4), (8, 9)]
+    result = nb.mdl_hypergraph_backbone(H)
+    result.backbone   # [frozenset({1, 2, 3, 4}), frozenset({8, 9})]
+
 **Comparing methods**: Systematically compare multiple backbones::
 
     backbones = {
@@ -89,4 +102,4 @@ Next steps
 - :doc:`concepts` -- Learn about the different categories of backbone methods
 - :doc:`user_guide/index` -- Detailed guides on workflows, method selection, and evaluation
 - :doc:`tutorials/index` -- Step-by-step tutorials for each method category
-- :doc:`api/index` -- Complete API reference for all 65 functions
+- :doc:`api/index` -- Complete API reference

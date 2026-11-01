@@ -11,18 +11,27 @@ dependencies::
 
     git clone https://github.com/brianckeegan/networkx_backbone.git
     cd networkx_backbone
-    pip install -e ".[full,test,docs]"
+    pip install -e ".[dev,docs]"
 
 Running tests
 -------------
 
-Run the test suite with pytest::
+Run the test suite and the docstring examples with pytest::
 
-    pytest
+    pytest --doctest-modules networkx_backbone tests
 
-Run with verbose output::
+Measure coverage::
 
-    pytest tests/ -v
+    pytest --cov=networkx_backbone --cov-report=term-missing
+
+``tests/test_minimal_deps.py`` runs the pure-Python methods in a subprocess in
+which numpy, scipy, and matplotlib cannot be imported. If you add a method that
+needs an optional dependency, import it inside the function (not at module
+level) so ``import networkx_backbone`` keeps working with NetworkX alone.
+
+Continuous integration (``.github/workflows/tests.yml``) runs lint, the test
+suite on Python 3.10-3.14, and the minimal-dependency smoke tests on every push
+and pull request.
 
 Building documentation
 -----------------------
@@ -37,7 +46,27 @@ The built documentation will be in ``docs/_build/html/``.
 Code style
 ----------
 
-- Follow PEP 8 for Python code
+The project follows the conventions of NetworkX and the wider scientific-Python
+stack:
+
+- Lint and format with `ruff <https://docs.astral.sh/ruff/>`_ (configured in
+  ``pyproject.toml``)::
+
+      ruff check networkx_backbone tests
+      ruff format networkx_backbone tests
+
+- Take a graph ``G`` as the first argument, return a new graph, and never
+  mutate the input.
+- Name edge-weight parameters ``weight`` and random-state parameters ``seed``;
+  accept ``None``, an ``int``, or a NumPy ``Generator``/``RandomState``, as
+  NetworkX does.
+- Raise :class:`networkx.NetworkXError` for invalid graph input and
+  :class:`networkx.NetworkXNotImplemented` (via
+  :func:`networkx.utils.not_implemented_for`) for unsupported graph types;
+  raise :class:`ValueError` for invalid non-graph arguments.
+- Name score attributes ``<method>_pvalue``, ``<method>_score``, or
+  ``<method>_keep`` so they compose with the filters in
+  :mod:`networkx_backbone.filters`.
 - Use NumPy-style docstrings for all public functions
 - Include ``Parameters``, ``Returns``, ``Raises`` (if applicable),
   ``References``, and ``Examples`` sections in docstrings

@@ -1,7 +1,8 @@
 API Reference
 =============
 
-Complete API documentation for backbone functions across 10 modules.
+Complete API documentation for backbone functions across 11 modules
+(the hypergraph page covers both ``hypergraph`` and ``hypergraph_io``).
 API examples are standardized on ``nx.les_miserables_graph()`` for
 non-bipartite methods and ``nx.davis_southern_women_graph()`` for
 bipartite methods.
@@ -30,10 +31,10 @@ an aggregate summary in :doc:`../user_guide/complexity`.
      - 1
      - Combined statistical/structural methods (GLAB)
    * - :doc:`bipartite`
-     - 11
+     - 16
      - Projection backbones, fixed null models, and high-level wrappers
    * - :doc:`hypergraph`
-     - 12
+     - 23
      - MDL backbone, compression ratio, intersection / s-line graph, inclusion (toplex) reduction, order filter, s-components, and statistically validated hypergraphs / cores
    * - :doc:`unweighted`
      - 3

@@ -3,8 +3,10 @@
 # For the full list of built-in configuration values, see the documentation:
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 
-from pathlib import Path
 import sys
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
+from pathlib import Path
 
 # Ensure local package imports resolve during docs builds.
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,9 +16,14 @@ if str(ROOT) not in sys.path:
 # -- Project information -----------------------------------------------------
 
 project = "networkx-backbone"
-copyright = "2025, Brian C. Keegan"
+copyright = "2025-2026, Brian C. Keegan"
 author = "Brian C. Keegan"
-release = "0.1.0"
+# Single source of truth: the version setuptools-scm derives from git tags.
+try:
+    release = _pkg_version("networkx-backbone")
+except PackageNotFoundError:  # building docs from an uninstalled checkout
+    release = "0.0.0+unknown"
+version = ".".join(release.split(".")[:2])
 
 # -- General configuration ---------------------------------------------------
 

@@ -3,8 +3,9 @@ networkx-backbone
 
 **Backbone extraction algorithms for complex networks, built on NetworkX.**
 
-``networkx-backbone`` provides 65 functions across 9 modules for extracting
-backbone structures from weighted and unweighted networks.
+``networkx-backbone`` provides about 90 functions across 11 modules for
+extracting backbone structures from weighted, unweighted, bipartite, and
+higher-order (hypergraph) networks.
 Core usage follows a score-then-filter pattern: methods score edges on a full
 graph first, then filtering utilities extract the final sparse backbone.
 
@@ -30,6 +31,9 @@ graph first, then filtering utilities extract the final sparse backbone.
    * - :doc:`api/bipartite`
      - Bipartite projection backbones
      - :func:`~networkx_backbone.sdsm`, :func:`~networkx_backbone.fdsm`, :func:`~networkx_backbone.fixedrow`
+   * - :doc:`api/hypergraph`
+     - Hypergraph backbones and interoperability
+     - :func:`~networkx_backbone.mdl_hypergraph_backbone`, :func:`~networkx_backbone.statistically_validated_hypergraph`, :func:`~networkx_backbone.read_hif`
    * - :doc:`api/unweighted`
      - Sparsification for unweighted graphs
      - :func:`~networkx_backbone.sparsify`, :func:`~networkx_backbone.lspar`
@@ -74,4 +78,5 @@ graph first, then filtering utilities extract the final sparse backbone.
    :caption: Development
 
    changelog
+   roadmap
    contributing
