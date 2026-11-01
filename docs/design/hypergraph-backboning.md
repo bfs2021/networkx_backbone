@@ -1,6 +1,7 @@
 # Design proposal: hypergraph network backboning
 
 - **Status:** Draft / for discussion
+- **Tracking:** open items now live in `docs/roadmap.rst` and GitHub issue #31
 - **Scope:** Evaluation + proposed integration plan (no library code changed by this document)
 - **Trigger:** Request to evaluate incorporating hypergraph network backboning
   methods into `networkx-backbone`, specifically the method of *Kirkley, Felippe,

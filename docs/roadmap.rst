@@ -129,6 +129,9 @@ Methods
 
 - **planned** (`#23 <https://github.com/brianckeegan/networkx_backbone/issues/23>`_): ``describe_backbone`` (Backbone 3.0's ``narrative``): methods
   text and citations for a chosen backbone and its parameters.
+- **planned** (`#32 <https://github.com/brianckeegan/networkx_backbone/issues/32>`_): ``sparsify(umst=True)`` should add the union of
+  all minimum spanning trees (Hamann et al., 2016), not a single spanning
+  forest.
 - **planned** (`#24 <https://github.com/brianckeegan/networkx_backbone/issues/24>`_): The local (per-node-neighborhood) MDL hypergraph backbone
   (Kirkley et al., 2026, Appendix E).
 - **planned** (`#25 <https://github.com/brianckeegan/networkx_backbone/issues/25>`_): Signed variants of ``ecm_filter`` and the noise-corrected

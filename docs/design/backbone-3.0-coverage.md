@@ -1,6 +1,7 @@
 # Coverage evaluation: Neal's *Backbone 3.0* (PLOS ONE, 2026)
 
 - **Status:** Evaluation + gap proposals (no library code changed by this document)
+- **Tracking:** open items now live in `docs/roadmap.rst` and GitHub issue #31
 - **Trigger:** Evaluate `networkx-backbone`'s coverage of the methods in
   *Neal, Z. P. (2026), "Backbone 3.0: An R package for extracting network
   backbones," PLOS ONE* (DOI 10.1371/journal.pone.0349258), propose

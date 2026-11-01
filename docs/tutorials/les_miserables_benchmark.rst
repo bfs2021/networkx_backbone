@@ -49,16 +49,16 @@ All counts below are after explicit filtering.
      - Edges After Filter
    * - :func:`~networkx_backbone.disparity_filter`
      - ``disparity_pvalue < 0.05``
-     - 247
+     - 9
    * - :func:`~networkx_backbone.noise_corrected_filter`
      - ``nc_score >= 2.0``
      - 98
    * - :func:`~networkx_backbone.marginal_likelihood_filter`
      - ``ml_pvalue < 0.05``
-     - 70
+     - 126
    * - :func:`~networkx_backbone.ecm_filter`
      - ``ecm_pvalue < 0.05``
-     - 254
+     - 72
    * - :func:`~networkx_backbone.lans_filter`
      - ``lans_pvalue < 0.05``
      - 109
@@ -97,9 +97,9 @@ All counts below are after explicit filtering.
      - 109
    * - :func:`~networkx_backbone.h_backbone`
      - ``h_backbone_keep`` (boolean)
-     - 22
+     - 18
    * - :func:`~networkx_backbone.modularity_backbone`
-     - ``modularity_keep`` (boolean)
+     - ``modularity_keep`` (boolean, ``seed=42``)
      - 72
    * - :func:`~networkx_backbone.planar_maximally_filtered_graph`
      - ``pmfg_keep`` (boolean)
@@ -145,16 +145,16 @@ All counts below are after explicit filtering.
      - 76
    * - :func:`~networkx_backbone.glab_filter`
      - ``glab_pvalue < 0.05``
-     - 5
+     - 56
    * - :func:`~networkx_backbone.sparsify`
      - ``sparsify_keep`` (boolean)
-     - 136
+     - 174
    * - :func:`~networkx_backbone.lspar`
      - ``sparsify_keep`` (boolean)
-     - 136
+     - 174
    * - :func:`~networkx_backbone.local_degree`
      - ``sparsify_keep`` (boolean)
-     - 135
+     - 91
 
 Reproducibility Script
 ----------------------
@@ -190,7 +190,7 @@ Reproducibility Script
         ("ultrametric_backbone", lambda: nb.boolean_filter(nb.ultrametric_backbone(G), "ultrametric_keep")),
         ("doubly_stochastic_filter", lambda: nb.threshold_filter(nb.doubly_stochastic_filter(G), "ds_weight", 0.1, mode="above")),
         ("h_backbone", lambda: nb.boolean_filter(nb.h_backbone(G), "h_backbone_keep")),
-        ("modularity_backbone", lambda: nb.boolean_filter(nb.modularity_backbone(G), "modularity_keep")),
+        ("modularity_backbone", lambda: nb.boolean_filter(nb.modularity_backbone(G, seed=42), "modularity_keep")),
         ("planar_maximally_filtered_graph", lambda: nb.boolean_filter(nb.planar_maximally_filtered_graph(G), "pmfg_keep")),
         ("maximum_spanning_tree_backbone", lambda: nb.boolean_filter(nb.maximum_spanning_tree_backbone(G), "mst_keep")),
         ("neighborhood_overlap", lambda: nb.fraction_filter(nb.neighborhood_overlap(G), "overlap", 0.3, ascending=False)),

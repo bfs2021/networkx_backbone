@@ -105,16 +105,31 @@ You can also use the high-level projection wrapper::
         projection="probs",
     )
 
+The wrapper scores every agent pair and returns only the edges significant at
+``alpha``, for every ``method`` (including ``"sdsm"`` and ``"fdsm"``). Pass
+``mtc`` to correct for the number of pairs tested, and ``signed=True`` to keep
+significantly weak pairs too::
+
+    bb = nb.backbone_from_projection(B, women_nodes, method="sdsm", alpha=0.05, mtc="bh")
+
+Calling :func:`~networkx_backbone.sdsm` or :func:`~networkx_backbone.fdsm`
+directly instead returns the full scored projection, so you can choose the
+threshold yourself.
+
 Comparing SDSM and FDSM
 -------------------------
 
-- **SDSM** is faster (analytical) and works well for large networks. It uses
-  a stochastic degree sequence model where node degrees are treated as
-  expectations rather than fixed values.
+- **SDSM** is faster (analytical) and works well for large networks. It fits
+  the bipartite configuration model (BiCM), in which node degrees hold in
+  expectation rather than exactly. It then evaluates each co-occurrence count
+  with the exact Poisson-binomial distribution, or with its refined normal
+  approximation (RNA) for large inputs, as R ``backbone`` does.
 
 - **FDSM** is more conservative and statistically rigorous. It preserves the
-  exact degree sequence through simulation, but requires more computation.
-  Increase ``trials`` for more precise p-values.
+  exact degree sequence by sampling a curveball Markov chain that starts from
+  the observed matrix (tuned with ``burn_in`` and ``thin``), but requires more
+  computation. P-values are ``(count + 1) / (trials + 1)``, so they are never
+  exactly 0. Increase ``trials`` for more precise p-values.
 
 ::
 

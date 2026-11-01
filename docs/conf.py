@@ -86,8 +86,10 @@ nitpick_ignore_regex = [
     (r"py:class", r'".*"'),
     (r"py:class", r'\{.*'),
     (r"py:class", r'.*\}'),
-    # NetworkX exceptions
+    # NetworkX exceptions named without the module in numpydoc Raises sections
     (r"py:exc", r"NetworkXError"),
+    (r"py:exc", r"NetworkXNotImplemented"),
+    (r"py:exc", r"AmbiguousSolution"),
 ]
 
 suppress_warnings = ["ref.citation", "ref.class"]

@@ -62,7 +62,7 @@ stack:
   NetworkX does.
 - Raise :class:`networkx.NetworkXError` for invalid graph input and
   :class:`networkx.NetworkXNotImplemented` (via
-  :func:`networkx.utils.not_implemented_for`) for unsupported graph types;
+  :func:`networkx.utils.decorators.not_implemented_for`) for unsupported graph types;
   raise :class:`ValueError` for invalid non-graph arguments.
 - Name score attributes ``<method>_pvalue``, ``<method>_score``, or
   ``<method>_keep`` so they compose with the filters in
