@@ -84,7 +84,7 @@ def sparsify(
     seed : integer, random_state, or None (default)
         Indicator of random number generation state, used only when
         ``escore="random"``.
-        See :ref:`Randomness<randomness>`.
+        See :ref:`Randomness<networkx:randomness>`.
 
     Returns
     -------
@@ -285,9 +285,7 @@ def _sparsify(G, escore, normalize, filter, s, umst, seed, rounding):
             f"Unknown edge scoring method: {escore!r}; expected one of {_ESCORES}"
         )
     if normalize not in _NORMALIZE:
-        raise ValueError(
-            f"Unknown normalize: {normalize!r}; expected 'rank' or None"
-        )
+        raise ValueError(f"Unknown normalize: {normalize!r}; expected 'rank' or None")
     if filter not in _FILTERS:
         raise ValueError(f"Unknown filter: {filter!r}; expected one of {_FILTERS}")
 

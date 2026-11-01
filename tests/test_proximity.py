@@ -1,6 +1,5 @@
 """Tests for proximity-based edge scoring methods."""
 
-import math
 
 import networkx as nx
 

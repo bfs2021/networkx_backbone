@@ -9,7 +9,7 @@ from networkx_backbone import glab_filter
 class TestGLABFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = glab_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "glab_pvalue" in data
 
     def test_pvalues_in_range(self, weighted_triangle):

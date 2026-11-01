@@ -696,9 +696,7 @@ def graph_distance_proximity(G, all_pairs=False):
     if G.is_directed():
         pairs = ((u, v) for u in nodes for v in nodes if u != v)
     else:
-        pairs = (
-            (u, v) for i, u in enumerate(nodes) for v in nodes[i + 1 :]
-        )
+        pairs = ((u, v) for i, u in enumerate(nodes) for v in nodes[i + 1 :])
 
     for u, v in pairs:
         d = sp.get(u, {}).get(v)
@@ -774,7 +772,9 @@ def local_path_index(G, epsilon=0.01, weight=None):
     if nx.number_of_selfloops(G):
         G_noloops = G.copy()
         G_noloops.remove_edges_from(list(nx.selfloop_edges(G)))
-    A = nx.to_scipy_sparse_array(G_noloops, nodelist=nodelist, weight=weight, format="csr")
+    A = nx.to_scipy_sparse_array(
+        G_noloops, nodelist=nodelist, weight=weight, format="csr"
+    )
     A2 = A @ A
     S = (A2 + epsilon * (A2 @ A)).tocsr()
     node_idx = {node: i for i, node in enumerate(nodelist)}

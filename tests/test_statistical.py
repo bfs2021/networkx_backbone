@@ -10,9 +10,9 @@ from networkx_backbone import (
     ecm_filter,
     lans,
     lans_filter,
+    marginal_likelihood_filter,
     mlf,
     multiple_linkage_analysis,
-    marginal_likelihood_filter,
     noise_corrected_filter,
 )
 
@@ -20,7 +20,7 @@ from networkx_backbone import (
 class TestDisparityFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = disparity_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "disparity_pvalue" in data
 
     def test_pvalues_in_range(self, weighted_triangle):
@@ -52,7 +52,7 @@ class TestDisparityFilter:
 class TestNoiseCorrectedFilter:
     def test_adds_score_attribute(self, weighted_triangle):
         H = noise_corrected_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "nc_score" in data
 
     def test_preserves_structure(self, weighted_triangle):
@@ -70,7 +70,7 @@ class TestNoiseCorrectedFilter:
 class TestMarginalLikelihoodFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = marginal_likelihood_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "ml_pvalue" in data
 
     def test_pvalues_in_range(self, weighted_triangle):
@@ -83,7 +83,7 @@ class TestMarginalLikelihoodFilter:
 class TestECMFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = ecm_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "ecm_pvalue" in data
 
     def test_pvalues_in_range(self, weighted_triangle):
@@ -99,7 +99,7 @@ class TestECMFilter:
 class TestLANSFilter:
     def test_adds_pvalue_attribute(self, weighted_triangle):
         H = lans_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _u, _v, data in H.edges(data=True):
             assert "lans_pvalue" in data
 
     def test_pvalues_in_range(self, weighted_triangle):

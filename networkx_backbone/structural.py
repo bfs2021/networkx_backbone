@@ -114,6 +114,28 @@ def _check_weights(G, weight, func_name, sign=None):
             )
 
 
+def _caller_stacklevel():
+    """``warnings.warn`` stacklevel pointing at the user's call site.
+
+    Skips the NetworkX decorator (argmap) frames that wrap the public
+    function; their number differs between the first and later calls.
+    """
+    import sys
+
+    decorators_file = nx.utils.decorators.__file__
+    # Frame 0 is this helper and frame 1 the public function, which is
+    # stacklevel 1 for its ``warnings.warn`` call; frame 2 is stacklevel 2.
+    frame = sys._getframe(2)
+    level = 2
+    while frame is not None and (
+        frame.f_code.co_filename == decorators_file
+        or "argmap" in frame.f_code.co_filename
+    ):
+        frame = frame.f_back
+        level += 1
+    return level
+
+
 def _h_index(values):
     """Largest integer h such that at least h of *values* are >= h."""
     h = 0
@@ -325,7 +347,7 @@ def global_sparsification(G, s=0.5, weight="weight"):
     if m == 0:
         return H
 
-    keep = max(1, int(math.ceil(s * m)))
+    keep = max(1, math.ceil(s * m))
     ranked_edges = sorted(
         G.edges(data=True),
         key=lambda x: (x[2].get(weight, 0.0), str(x[0]), str(x[1])),
@@ -397,9 +419,7 @@ def primary_linkage_analysis(G, weight="weight"):
             out_edges = list(G.out_edges(u, data=True))
             if not out_edges:
                 continue
-            _, v, _ = max(
-                out_edges, key=lambda x: (x[2].get(weight, 0.0), str(x[1]))
-            )
+            _, v, _ = max(out_edges, key=lambda x: (x[2].get(weight, 0.0), str(x[1])))
             kept_edges.add(_edge_key(G, u, v))
         _mark_kept_edges(H, kept_edges, "primary_linkage_keep")
         return H
@@ -487,7 +507,7 @@ def edge_betweenness_filter(G, s=0.5, weight="weight"):
         data.pop(dist_attr, None)
 
     m = scored.number_of_edges()
-    keep = max(1, int(math.ceil(s * m))) if m > 0 else 0
+    keep = max(1, math.ceil(s * m)) if m > 0 else 0
     ranked_edges = sorted(
         scored.edges(data=True),
         key=lambda x: (x[2]["edge_betweenness"], str(x[0]), str(x[1])),
@@ -908,7 +928,9 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
         # Check convergence on the non-empty rows/columns
         rs = D.sum(axis=1)[active]
         cs = D.sum(axis=0)[active]
-        if np.allclose(rs, 1, rtol=0, atol=tol) and np.allclose(cs, 1, rtol=0, atol=tol):
+        if np.allclose(rs, 1, rtol=0, atol=tol) and np.allclose(
+            cs, 1, rtol=0, atol=tol
+        ):
             converged = True
             break
 
@@ -920,7 +942,7 @@ def doubly_stochastic_filter(G, weight="weight", max_iter=1000, tol=1e-8):
             "matrix (e.g. trees, or several leaves attached to one node). "
             "'ds_weight' holds the last, non-doubly-stochastic iterate.",
             RuntimeWarning,
-            stacklevel=3,  # skip the not_implemented_for argmap wrapper
+            stacklevel=_caller_stacklevel(),
         )
 
     H = G.copy()
@@ -1049,7 +1071,7 @@ def modularity_backbone(G, weight="weight", seed=None):
         Indicator of random number generation state, passed unchanged to
         every :func:`networkx.community.louvain_communities` call.  With an
         integer seed each call is seeded identically, so results are
-        reproducible.  See :ref:`Randomness<randomness>`.
+        reproducible.  See :ref:`Randomness<networkx:randomness>`.
 
     Returns
     -------
@@ -1090,9 +1112,7 @@ def modularity_backbone(G, weight="weight", seed=None):
     def louvain_modularity(graph):
         if graph.size(weight=weight) == 0:
             return 0.0
-        communities = nx.community.louvain_communities(
-            graph, weight=weight, seed=seed
-        )
+        communities = nx.community.louvain_communities(graph, weight=weight, seed=seed)
         return nx.community.modularity(graph, communities, weight=weight)
 
     mod_full = louvain_modularity(G)

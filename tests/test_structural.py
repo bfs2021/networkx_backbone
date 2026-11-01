@@ -7,8 +7,8 @@ from networkx_backbone import (
     boolean_filter,
     doubly_stochastic_filter,
     edge_betweenness_filter,
-    global_threshold_filter,
     global_sparsification,
+    global_threshold_filter,
     h_backbone,
     high_salience_skeleton,
     maximum_spanning_tree_backbone,
@@ -108,7 +108,7 @@ class TestNodeDegreeFilter:
 class TestHighSalienceSkeleton:
     def test_adds_salience_attribute(self, weighted_triangle):
         H = high_salience_skeleton(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _, _, data in H.edges(data=True):
             assert "salience" in data
             assert 0.0 <= data["salience"] <= 1.0
 
@@ -146,7 +146,7 @@ class TestUltrametricBackbone:
 class TestDoublyStochasticFilter:
     def test_adds_ds_weight(self, weighted_triangle):
         H = doubly_stochastic_filter(weighted_triangle)
-        for u, v, data in H.edges(data=True):
+        for _, _, data in H.edges(data=True):
             assert "ds_weight" in data
 
 

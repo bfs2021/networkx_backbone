@@ -14,7 +14,6 @@ from networkx_backbone import (
     threshold_filter,
 )
 
-
 # ---------------------------------------------------------------------
 # Straightforward reference implementations of the per-node top-k rules
 # ---------------------------------------------------------------------
@@ -112,9 +111,7 @@ def test_local_degree_score_is_critical_exponent():
     H = local_degree(G, s=0.3)
     for s2 in EXPONENTS:
         via_score = {
-            frozenset((u, v))
-            for u, v, sc in H.edges(data="sparsify_score")
-            if sc <= s2
+            frozenset((u, v)) for u, v, sc in H.edges(data="sparsify_score") if sc <= s2
         }
         assert via_score == _kept(local_degree(G, s=s2))
 
@@ -173,8 +170,9 @@ class TestSparsifyOptions:
 
     def test_random_seed_reproducible(self, karate):
         def scores(seed):
-            H = sparsify(karate, escore="random", filter="threshold",
-                         normalize=None, seed=seed)
+            H = sparsify(
+                karate, escore="random", filter="threshold", normalize=None, seed=seed
+            )
             return dict(nx.get_edge_attributes(H, "sparsify_score"))
 
         assert scores(7) == scores(7)
@@ -185,11 +183,21 @@ class TestSparsifyOptions:
         assert all(0.0 <= v < 1.0 for v in scores(None).values())
 
     def test_quadrangles_known_answer(self):
-        H = sparsify(nx.cycle_graph(4), escore="quadrangles", normalize=None,
-                     filter="threshold", s=1)
+        H = sparsify(
+            nx.cycle_graph(4),
+            escore="quadrangles",
+            normalize=None,
+            filter="threshold",
+            s=1,
+        )
         assert set(nx.get_edge_attributes(H, "sparsify_score").values()) == {1.0}
-        H = sparsify(nx.complete_graph(4), escore="quadrangles", normalize=None,
-                     filter="threshold", s=3)
+        H = sparsify(
+            nx.complete_graph(4),
+            escore="quadrangles",
+            normalize=None,
+            filter="threshold",
+            s=3,
+        )
         assert set(nx.get_edge_attributes(H, "sparsify_score").values()) == {2.0}
         assert not any(nx.get_edge_attributes(H, "sparsify_keep").values())
 
@@ -224,8 +232,9 @@ class TestSparsifyOptions:
 
     def test_umst_threshold_filter(self):
         G = nx.barbell_graph(4, 1)
-        H = sparsify(G, escore="triangles", normalize=None, filter="threshold",
-                     s=10, umst=True)
+        H = sparsify(
+            G, escore="triangles", normalize=None, filter="threshold", s=10, umst=True
+        )
         backbone = boolean_filter(H, "sparsify_keep")
         assert nx.is_connected(backbone)
         assert backbone.number_of_edges() == G.number_of_nodes() - 1

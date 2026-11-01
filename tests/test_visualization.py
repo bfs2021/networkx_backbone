@@ -108,8 +108,8 @@ def test_compare_graphs_new_figure_pos_and_seed(plt):
     assert ax.get_title() == ""
     # Removed nodes are drawn in a second node collection.
     assert len(ax.collections) == 4
-    fig1, ax1 = compare_graphs(G, H, seed=3)
-    fig2, ax2 = compare_graphs(G, H, seed=3)
+    _, ax1 = compare_graphs(G, H, seed=3)
+    _, ax2 = compare_graphs(G, H, seed=3)
     off1 = ax1.collections[-1].get_offsets()
     off2 = ax2.collections[-1].get_offsets()
     assert (off1 == off2).all()
@@ -117,7 +117,7 @@ def test_compare_graphs_new_figure_pos_and_seed(plt):
 
 def test_compare_graphs_directed(plt):
     D = nx.DiGraph([(0, 1), (1, 2), (2, 0)])
-    fig, ax, diff = compare_graphs(D, nx.DiGraph([(0, 1)]), seed=1, return_diff=True)
+    _, _, diff = compare_graphs(D, nx.DiGraph([(0, 1)]), seed=1, return_diff=True)
     assert diff["removed_edges"] == {(1, 2), (2, 0)}
 
 

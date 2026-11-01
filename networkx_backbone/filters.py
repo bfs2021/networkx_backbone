@@ -11,7 +11,6 @@ import networkx as nx
 
 from networkx_backbone._docstrings import append_complexity_docstrings
 
-
 __all__ = [
     "multigraph_to_weighted",
     "threshold_filter",

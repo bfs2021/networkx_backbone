@@ -380,7 +380,7 @@ def marginal_likelihood_filter(G, weight="weight", signed=False):
     s_out, s_in = {}, {}
     T = 0
     for u, v, d in G.edges(data=True):
-        w = int(round(d[weight]))
+        w = round(d[weight])
         T += w
         s_out[u] = s_out.get(u, 0) + w
         s_in[v] = s_in.get(v, 0) + w
@@ -393,7 +393,7 @@ def marginal_likelihood_filter(G, weight="weight", signed=False):
     norm = T * T if G.is_directed() else 2 * T * T
 
     for u, v, data in H.edges(data=True):
-        k = int(round(data[weight]))
+        k = round(data[weight])
         if T > 0 and u != v:
             p_param = min(s_out[u] * s_in[v] / norm, 1.0)
             p_hi = float(sp_stats.binom.sf(k - 1, T, p_param))
@@ -514,7 +514,7 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
     for u, v, d in G.edges(data=True):
         if u == v:
             continue
-        w = max(int(round(d[weight])), 1)
+        w = max(round(d[weight]), 1)
         i, j = idx[u], idx[v]
         k_out[i] += 1
         s_out[i] += w
@@ -524,7 +524,7 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
         k_out = k_in = k_out + k_in
         s_out = s_in = s_out + s_in
 
-    a_out, b_out, a_in, b_in, act_out, act_in, err = _fit_ecm(
+    a_out, b_out, a_in, b_in, _act_out, _act_in, err = _fit_ecm(
         k_out, s_out, k_in, s_in, G.is_directed(), max_iter, tol
     )
     if err > tol:
@@ -549,7 +549,7 @@ def ecm_filter(G, weight="weight", max_iter=1000, tol=1e-6):
         log_denom = hi + math.log(
             math.exp(log_xxyy - hi) + math.exp(log_one_minus_yy - hi)
         )
-        w = max(int(round(data[weight])), 1)
+        w = max(round(data[weight]), 1)
         pval = math.exp(log_xxyy - log_denom + (w - 1) * log_yy)
         data["ecm_pvalue"] = float(min(max(pval, 0.0), 1.0))
 

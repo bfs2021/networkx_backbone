@@ -13,7 +13,7 @@ import pytest
 import networkx_backbone as nb
 
 pytest.importorskip("scipy")
-from scipy import stats  # noqa: E402
+from scipy import stats
 
 SCORERS = [
     (nb.disparity_filter, "disparity_pvalue"),

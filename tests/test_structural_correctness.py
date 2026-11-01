@@ -154,9 +154,19 @@ class TestStrongestNTiesAndPrimaryLinkage:
         kept = {(u, v) for u, v, k in H.edges(data="primary_linkage_keep") if k}
         assert kept == {("a", "b"), ("b", "c"), ("c", "a")}
 
+    def test_primary_linkage_directed_sink(self, digraph):
+        digraph.add_edge("c", "sink", weight=0.5)
+        digraph.add_edge("sink2", "sink", weight=0.1)
+        H = primary_linkage_analysis(digraph)
+        kept = {(u, v) for u, v, k in H.edges(data="primary_linkage_keep") if k}
+        assert kept == {("a", "b"), ("b", "c"), ("c", "a"), ("sink2", "sink")}
+
     def test_primary_linkage_undirected_known(self, weighted_triangle):
         H = primary_linkage_analysis(weighted_triangle)
-        assert _kept(H, "primary_linkage_keep") == {frozenset((0, 1)), frozenset((0, 2))}
+        assert _kept(H, "primary_linkage_keep") == {
+            frozenset((0, 1)),
+            frozenset((0, 2)),
+        }
 
     def test_mixed_type_nodes_with_tied_weights(self):
         G = nx.Graph()
@@ -175,13 +185,17 @@ class TestGlobalAndBetweenness:
         G.add_weighted_edges_from([(0, 1, 5.0), (1, 2, 1.0), (2, 3, 4.0), (3, 0, 2.0)])
         H = global_sparsification(G, s=0.75)
         assert _kept(H, "global_sparsification_keep") == {
-            frozenset((0, 1)), frozenset((2, 3)), frozenset((0, 3))
+            frozenset((0, 1)),
+            frozenset((2, 3)),
+            frozenset((0, 3)),
         }
 
     def test_edge_betweenness_uses_inverse_weight_distance(self):
         # Square 0-1-2-3-0; the strong edges make 0-1-2 the shortest route.
         G = nx.Graph()
-        G.add_weighted_edges_from([(0, 1, 10.0), (1, 2, 10.0), (2, 3, 1.0), (3, 0, 1.0)])
+        G.add_weighted_edges_from(
+            [(0, 1, 10.0), (1, 2, 10.0), (2, 3, 1.0), (3, 0, 1.0)]
+        )
         H = edge_betweenness_filter(G, s=0.5)
         dist = nx.Graph()
         for u, v, w in G.edges(data="weight"):
@@ -189,7 +203,10 @@ class TestGlobalAndBetweenness:
         expected = nx.edge_betweenness_centrality(dist, weight="d")
         for u, v, eb in H.edges(data="edge_betweenness"):
             assert eb == pytest.approx(expected.get((u, v), expected.get((v, u))))
-        assert _kept(H, "edge_betweenness_keep") == {frozenset((0, 1)), frozenset((1, 2))}
+        assert _kept(H, "edge_betweenness_keep") == {
+            frozenset((0, 1)),
+            frozenset((1, 2)),
+        }
 
     def test_edge_betweenness_unweighted_and_nonpositive(self):
         H = edge_betweenness_filter(nx.barbell_graph(3, 0), s=0.1)
@@ -242,10 +259,12 @@ class TestMetricUltrametric:
         # distances 1, 1 and 2.5: the direct 0-2 edge is semi-metric
         G.add_weighted_edges_from([(0, 1, 1.0), (1, 2, 1.0), (0, 2, 0.4)])
         assert _kept(metric_backbone(G), "metric_keep") == {
-            frozenset((0, 1)), frozenset((1, 2))
+            frozenset((0, 1)),
+            frozenset((1, 2)),
         }
         assert _kept(ultrametric_backbone(G), "ultrametric_keep") == {
-            frozenset((0, 1)), frozenset((1, 2))
+            frozenset((0, 1)),
+            frozenset((1, 2)),
         }
 
     def test_metric_but_not_ultrametric(self):
@@ -277,8 +296,10 @@ class TestMetricUltrametric:
     def test_self_loops(self):
         G = nx.Graph()
         G.add_weighted_edges_from([(0, 1, 1.0), (1, 2, 2.0), (0, 0, 3.0)])
-        for func, attr in [(metric_backbone, "metric_keep"),
-                           (ultrametric_backbone, "ultrametric_keep")]:
+        for func, attr in [
+            (metric_backbone, "metric_keep"),
+            (ultrametric_backbone, "ultrametric_keep"),
+        ]:
             H = func(G)
             assert H[0][0][attr] is False
             assert H[0][1][attr] is True and H[1][2][attr] is True
@@ -301,8 +322,10 @@ class TestDoublyStochastic:
     @pytest.mark.parametrize("G", [nx.path_graph(3), nx.star_graph(4)])
     def test_warns_when_not_scalable(self, G):
         nx.set_edge_attributes(G, 1.0, "weight")
-        with pytest.warns(RuntimeWarning, match="did not converge"):
-            doubly_stochastic_filter(G)
+        for _ in range(2):  # first call compiles the decorator; check both
+            with pytest.warns(RuntimeWarning, match="did not converge") as rec:
+                doubly_stochastic_filter(G)
+            assert rec[0].filename == __file__
 
     def test_mixed_type_nodes(self):
         G = nx.Graph()
@@ -320,9 +343,9 @@ class TestHBackbone:
         kept = _kept(H, "h_backbone_keep")
         assert len(kept) < G.number_of_edges()
         # Only the h-bridge part remains: the bridge and the edges into it.
-        assert kept == {frozenset((3, 4))} | {
-            frozenset((i, 3)) for i in range(3)
-        } | {frozenset((4, j)) for j in range(5, 8)}
+        assert kept == {frozenset((3, 4))} | {frozenset((i, 3)) for i in range(3)} | {
+            frozenset((4, j)) for j in range(5, 8)
+        }
 
     def test_bridge_values_and_strength_part(self):
         G = nx.barbell_graph(4, 0)
@@ -354,7 +377,9 @@ class TestModularityBackbone:
         )
         assert set(v3) == set(v1)
 
-    def test_les_miserables_seed_42_matches_previous_default(self, les_miserables_weighted):
+    def test_les_miserables_seed_42_matches_previous_default(
+        self, les_miserables_weighted
+    ):
         H = modularity_backbone(les_miserables_weighted, seed=42)
         assert boolean_filter(H, "modularity_keep").number_of_edges() == 72
 

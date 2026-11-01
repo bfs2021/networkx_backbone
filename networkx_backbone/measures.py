@@ -6,7 +6,6 @@ import networkx as nx
 
 from networkx_backbone._docstrings import append_complexity_docstrings
 
-
 __all__ = [
     "node_fraction",
     "edge_fraction",

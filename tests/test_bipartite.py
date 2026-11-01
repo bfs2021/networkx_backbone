@@ -1,16 +1,16 @@
 """Tests for bipartite backbone extraction methods."""
 
-import numpy as np
 import networkx as nx
+import numpy as np
 import pytest
 
 from networkx_backbone import (
     backbone,
-    bipartite_projection,
     backbone_from_projection,
     backbone_from_unweighted,
     backbone_from_weighted,
     bicm,
+    bipartite_projection,
     fastball,
     fdsm,
     fixedcol,
@@ -91,7 +91,7 @@ class TestSDSM:
 
     def test_adds_pvalue_attribute(self, bipartite_graph):
         backbone = sdsm(bipartite_graph, agent_nodes=[1, 2, 3])
-        for u, v, data in backbone.edges(data=True):
+        for _u, _v, data in backbone.edges(data=True):
             assert "sdsm_pvalue" in data
 
     def test_agent_nodes_only(self, bipartite_graph):
@@ -145,7 +145,7 @@ class TestFDSM:
 
     def test_adds_pvalue_attribute(self, bipartite_graph):
         backbone = fdsm(bipartite_graph, agent_nodes=[1, 2, 3], trials=50, seed=42)
-        for u, v, data in backbone.edges(data=True):
+        for _u, _v, data in backbone.edges(data=True):
             assert "fdsm_pvalue" in data
 
     def test_pvalues_in_range(self, bipartite_graph):
@@ -325,7 +325,7 @@ class TestSignedProjections:
         assert all("sign" not in d for _, _, d in H.edges(data=True))
 
     def test_fdsm_signed_deterministic(self, davis_southern_women_graph, davis_women_nodes):
-        kw = dict(agent_nodes=davis_women_nodes, trials=200, seed=7, signed=True)
+        kw = {"agent_nodes": davis_women_nodes, "trials": 200, "seed": 7, "signed": True}
         a = fdsm(davis_southern_women_graph, **kw)
         b = fdsm(davis_southern_women_graph, **kw)
         assert all("sign" in d for _, _, d in a.edges(data=True))
